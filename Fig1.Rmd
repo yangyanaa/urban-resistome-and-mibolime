@@ -1,0 +1,4402 @@
+---
+title: "Fig1"
+author: "yan"
+date: "2025-12-15"
+output: html_document
+---
+
+```{r fig1, fig.width=10, fig.height=10}
+#pcoa
+#108bac pcoa
+rm(list=ls())
+library(vegan)
+library(ape)
+library(ggplot2)
+library(colorRamps)
+library(ggrepel)
+
+
+##bac
+rm(list=ls())
+otu_all0 <- read.csv("/Users/yangy/Documents/E/city/bacteria/bacteria_flattening.csv",check.names = F,row.names = 1,header = T)
+otu_all0 <- as.data.frame(t(otu_all0))
+# Read metadata file
+group0 <- read.csv("/Users/yangy/Documents/E/city/metagenome/group1.csv",header = T,row.names = 1)
+group0 <- na.omit(group0)
+group <- group0[order(group0$sample.id),]
+otu_all0$sample.id <- rownames(otu_all0)
+otu_sub <- otu_all0[otu_all0$sample.id %in% group$sample.id,]
+otu<-otu_sub[,1:6927]
+
+otu <-otu[order(rownames(otu)),]
+otu$sample.id <- rownames(otu)
+
+
+colnames(otu)[(ncol(otu)-9):ncol(otu)]
+otu_all <- merge(otu, group, by.x="sample.id", by.y="sample.id")
+colnames(otu_all)[(ncol(otu_all)-19):ncol(otu_all)]
+
+dist<-vegdist(decostand(otu_all[,2:6928],"hellinger"),"bray")
+bd<-betadisper(dist,factor(group$group))
+print (anova(bd))
+
+pcoa <- cmdscale(vegdist(decostand(otu_all[,2:6928], "hellinger"), method = 'bray'), 
+                 k = (nrow(otu_all) - 1), eig = TRUE)
+
+
+
+pcoa_exp <- pcoa$eig/sum(pcoa$eig)
+pcoa1 <- paste0(round(100*pcoa_exp[1], 2) ,'%')
+pcoa2 <- paste0(round(100*pcoa_exp[2], 2) ,'%')
+permanova <- adonis2(decostand(otu_all[,2:6928],"hellinger") 
+                     ~ otu_all$group, 
+                     distance = 'bray', permutations = 999, parallel=60)###perm anova 与time和type的顺序没有影响 
+print(permanova)
+pcoa_all <- data.frame(pcoa$point)[1:2]
+pcoa_all$sample <- rownames(pcoa_all)
+pcoa_all$sample <- otu$sample.id
+pcoa_all <- merge(pcoa_all, group0, by.x = 'sample',by.y = "sample.id")
+names(pcoa_all)[2:3] <- c('pcoa1', 'pcoa2')
+
+########定义r值和P 值位置
+h1 <- max(pcoa_all$pcoa1)-0.20*(range(pcoa_all$pcoa1)[2]-range(pcoa_all$pcoa1)[1])
+
+polygon <- pcoa_all[,c("pcoa1", "pcoa2", "group")]
+find_hull <- function(df1) df1[chull(df1$pcoa1, df1$pcoa2), ]
+library(plyr)
+
+hulls <- ddply(polygon, "group", find_hull)
+R2_value <- permanova$R2[1]
+P_value <- permanova$`Pr(>F)`[1]
+
+
+p21 <- ggplot(data = pcoa_all, aes(pcoa1, pcoa2)) +
+  # 置信椭圆（无边框，仅半透明填充）
+  stat_ellipse(
+    aes(fill = group),
+    geom = "polygon",
+    color = NA,        # 不绘制边框
+    level = 0.95,
+    alpha = 0.08,      # 淡淡的透明度
+    show.legend = FALSE
+  ) +
+  
+  # 散点
+  geom_point(aes(color = group), size = 5) +
+  
+  # 手动定义颜色（散点 + 填充保持一致）
+  scale_fill_manual(values = c(
+    "Forest" = "#6cb509",
+    "Cropland" = "cyan",
+    "Industry" = "#5e9ceb",
+    "Urban" = "#ff7f27"
+  )) +
+  scale_colour_manual(values = c(
+    "Forest" = "#6cb509",
+    "Cropland" = "cyan",
+    "Industry" = "#5e9ceb",
+    "Urban" = "#ff7f27"
+  ),
+  breaks = c("Forest", "Cropland", "Industry", "Urban"))+
+  guides(color = guide_legend(title = NULL),
+         fill  = guide_legend(title = NULL)) +
+  # 主题
+  theme_bw() +
+  theme(
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 1),
+    legend.title = element_text(colour = "black", size = 20, face = "bold"),
+    legend.text = element_text(colour = "black", size = 20, face = "bold"),
+    axis.text = element_text(size = 22, colour = "black",face = "bold"),
+    axis.title = element_text(size = 24,colour = "black", face = "bold"),
+    plot.title = element_text(hjust = 0.5,colour = "black", face = "bold", size = 28)
+  ) +
+  
+  
+  # 坐标轴辅助线
+  geom_vline(xintercept = 0, color = 'black', linewidth = 0.5, linetype = 2) +
+  geom_hline(yintercept = 0, color = 'black', linewidth = 0.5, linetype = 2) +
+  
+  # 坐标轴与标题
+  labs(
+    x = paste("PCo1 (", pcoa1, ")", sep = ""),
+    y = paste("PCo2 (", pcoa2, ")", sep = ""),
+    title = "Bacterial community"
+  ) +
+  
+  # 标注 Adonis R² 和 P
+  annotate(
+    'text',
+    label = paste0("R² = ", round(R2_value, 3),
+                   ", P = ", signif(P_value, 3)),
+    x = h1 - 0.1, y = 0.4, size = 8
+  )
+
+
+
+p21
+
+#ggsave("/Users/yangy/Documents/D/city/ARG/figure/composition/108bac_PCOA.pdf",p21,width=8,height=6)
+
+
+rm(list=ls())
+library(vegan)
+library(plyr)
+library(ggplot2)
+arg0 <- read.csv("/Users/yangy/Documents/E/city/metagenome/arg/results/normalized_percell.csv",sep=",",header=T,row.names=1)
+arg0 <- as.data.frame(t(arg0))
+group0<-read.csv("/Users/yangy/Documents/E/city/metagenome/group.csv",sep=",",header=T,row.names=1)
+group0 <- na.omit(group0)
+group <- group0[order(rownames(group0)), ]
+arg0$sample.id <- rownames(arg0)
+group0$sample.id <- rownames(group0)
+
+colnames(arg0)[(ncol(arg0)-9):ncol(arg0)]
+otu_all <- merge(arg0, group0, by.x="sample.id", by.y="sample.id")
+colnames(otu_all)[(ncol(otu_all)-19):ncol(otu_all)]
+
+dist<-vegdist(decostand(otu_all[,2:4544],"hellinger"),"bray")
+bd<-betadisper(dist,factor(group$group))
+print (anova(bd))
+
+pcoa <- cmdscale(vegdist(decostand(otu_all[,2:4544], "hellinger"), method = 'bray'), 
+                 k = (nrow(otu_all) - 1), eig = TRUE)
+pcoa_exp <- pcoa$eig/sum(pcoa$eig)
+pcoa1 <- paste0(round(100*pcoa_exp[1], 2) ,'%')
+pcoa2 <- paste0(round(100*pcoa_exp[2], 2) ,'%')
+permanova <- adonis2(decostand(otu_all[,2:4544],"hellinger") 
+                     ~ otu_all$group, 
+                     distance = 'bray', permutations = 999, parallel=60)###perm anova 与time和type的顺序没有影响 
+print(permanova)
+pcoa_all <- data.frame(pcoa$point)[1:2]
+pcoa_all$sample <- rownames(pcoa_all)
+pcoa_all$sample <- arg0$sample.id
+pcoa_all <- merge(pcoa_all, group0, by.x = 'sample',by.y = "sample.id")
+names(pcoa_all)[2:3] <- c('pcoa1', 'pcoa2')
+
+########定义r值和P 值位置
+h1 <- max(pcoa_all$pcoa1)-0.20*(range(pcoa_all$pcoa1)[2]-range(pcoa_all$pcoa1)[1])
+
+polygon <- pcoa_all[,c("pcoa1", "pcoa2", "group")]
+find_hull <- function(df1) df1[chull(df1$pcoa1, df1$pcoa2), ]
+hulls <- ddply(polygon, "group", find_hull)
+
+R2_value <- permanova$R2[1]
+P_value <- permanova$`Pr(>F)`[1]
+
+
+p21 <- ggplot(data = pcoa_all, aes(pcoa1, pcoa2)) +
+  # 置信椭圆（无边框，仅半透明填充）
+  stat_ellipse(
+    aes(fill = group),
+    geom = "polygon",
+    color = NA,        # 不绘制边框
+    level = 0.95,
+    alpha = 0.08,      # 淡淡的透明度
+    show.legend = FALSE
+  ) +
+  
+  # 散点
+  geom_point(aes(color = group), size = 5) +
+  
+  # 手动定义颜色（散点 + 填充保持一致）
+  scale_fill_manual(values = c(
+    "Forest" = "#6cb509",
+    "Cropland" = "cyan",
+    "Industry" = "#5e9ceb",
+    "Urban" = "#ff7f27"
+  )) +
+  scale_colour_manual(values = c(
+    "Forest" = "#6cb509",
+    "Cropland" = "cyan",
+    "Industry" = "#5e9ceb",
+    "Urban" = "#ff7f27"
+  ),
+  breaks = c("Forest", "Cropland", "Industry", "Urban")) +
+  # 去掉图例标题
+  guides(color = guide_legend(title = NULL),
+         fill  = guide_legend(title = NULL)) +
+  # 主题
+  theme_bw() +
+  theme(
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 1),
+    legend.title = element_text(colour = "black", size = 20, face = "bold"),
+    legend.text = element_text(colour = "black", size = 20, face = "bold"),
+    axis.text = element_text(size = 22, colour = "black",face = "bold"),
+    axis.title = element_text(size = 24,colour = "black", face = "bold"),
+    plot.title = element_text(hjust = 0.5,colour = "black", face = "bold", size = 28)
+  ) +
+  
+  # 坐标轴辅助线
+  geom_vline(xintercept = 0, color = 'black', linewidth = 0.5, linetype = 2) +
+  geom_hline(yintercept = 0, color = 'black', linewidth = 0.5, linetype = 2) +
+  
+  # 坐标轴与标题
+  labs(
+    x = paste("PCo1 (", pcoa1, ")", sep = ""),
+    y = paste("PCo2 (", pcoa2, ")", sep = ""),
+    title = "Resistome"
+  ) +
+  
+  # 标注 Adonis R² 和 P
+  annotate(
+    'text',
+    label = paste0("R² = ", round(R2_value, 3),
+                   ", P = ", signif(P_value, 3)),
+    x = h1 - 0.1, y = 0.25, size = 8
+  )
+p21
+#ggsave("/Users/yangy/Documents/D/city/ARG/figure/composition/ARG_PCOA.pdf",p21,width=8,height=6)
+
+
+
+
+
+#high risk arg pcoa
+##20251014版本
+rm(list=ls())
+arg0 <- read.csv("/Users/yangy/Documents/E/city/metagenome/arg/results/high_risk_arg.csv",sep=",",header=T,row.names = 1)
+arg0<-arg0[,-1]
+arg0 <- as.data.frame(t(arg0))
+group0<-read.csv("/Users/yangy/Documents/E/city/metagenome/group1.csv",sep=",",header=T,row.names=1)
+group0 <- na.omit(group0)
+group <- group0[order(group0$sample.id), ]
+arg0<- arg0[order(rownames(arg0)), ]
+arg0$sample.id<-row.names(arg0)
+
+colnames(arg0)[(ncol(arg0)-9):ncol(arg0)]
+otu_all <- merge(arg0, group0, by.x="sample.id", by.y="sample.id")
+colnames(otu_all)[(ncol(otu_all)-19):ncol(otu_all)]
+dist<-vegdist(decostand(otu_all[,2:74],"hellinger"),"bray")
+bd<-betadisper(dist,factor(group$group))
+print (anova(bd))
+
+
+pcoa <- cmdscale(vegdist(decostand(otu_all[,2:74], "hellinger"), method = 'bray'), 
+                 k = (nrow(otu_all) - 1), eig = TRUE)
+pcoa_exp <- pcoa$eig/sum(pcoa$eig)
+pcoa1 <- paste0(round(100*pcoa_exp[1], 2) ,'%')
+pcoa2 <- paste0(round(100*pcoa_exp[2], 2) ,'%')
+permanova <- adonis2(decostand(otu_all[,2:74],"hellinger") 
+                     ~ otu_all$group, 
+                     distance = 'bray', permutations = 999, parallel=60)###perm anova 与time和type的顺序没有影响 
+print(permanova)
+pcoa_all <- data.frame(pcoa$point)[1:2]
+pcoa_all$sample <- rownames(pcoa_all)
+pcoa_all$sample <- arg0$sample.id
+pcoa_all <- merge(pcoa_all, group0, by.x = 'sample',by.y = "sample.id")
+names(pcoa_all)[2:3] <- c('pcoa1', 'pcoa2')
+
+########定义r值和P 值位置
+h1 <- max(pcoa_all$pcoa1)-0.20*(range(pcoa_all$pcoa1)[2]-range(pcoa_all$pcoa1)[1])
+
+polygon <- pcoa_all[,c("pcoa1", "pcoa2", "group")]
+find_hull <- function(df1) df1[chull(df1$pcoa1, df1$pcoa2), ]
+hulls <- ddply(polygon, "group", find_hull)
+R2_value <- permanova$R2[1]
+P_value <- permanova$`Pr(>F)`[1]
+
+
+
+
+p21 <- ggplot(data = pcoa_all, aes(pcoa1, pcoa2)) +
+  # 置信椭圆（无边框，仅半透明填充）
+  stat_ellipse(
+    aes(fill = group),
+    geom = "polygon",
+    color = NA,        # 不绘制边框
+    level = 0.95,
+    alpha = 0.08,      # 淡淡的透明度
+    show.legend = FALSE
+  ) +
+  
+  # 散点
+  geom_point(aes(color = group), size = 5) +
+  
+  # 手动定义颜色（散点 + 填充保持一致，并固定顺序）
+  scale_fill_manual(
+    values = c(
+      "Forest" = "#6cb509",
+      "Cropland" = "cyan",
+      "Industry" = "#5e9ceb",
+      "Urban" = "#ff7f27"
+    ),
+    breaks = c("Forest", "Cropland", "Industry", "Urban")
+  ) +
+  scale_colour_manual(
+    values = c(
+      "Forest" = "#6cb509",
+      "Cropland" = "cyan",
+      "Industry" = "#5e9ceb",
+      "Urban" = "#ff7f27"
+    ),
+    breaks = c("Forest", "Cropland", "Industry", "Urban")
+  ) +
+  
+  # 去掉图例标题
+  guides(color = guide_legend(title = NULL),
+         fill  = guide_legend(title = NULL)) +
+  
+  # 主题
+  theme_bw() +
+  theme(
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 1),
+    legend.title = element_text(colour = "black", size = 20, face = "bold"),
+    legend.text = element_text(colour = "black", size = 20, face = "bold"),
+    axis.text = element_text(size = 22, colour = "black",face = "bold"),
+    axis.title = element_text(size = 24,colour = "black", face = "bold"),
+    plot.title = element_text(hjust = 0.5,colour = "black", face = "bold", size = 28)
+  ) +
+  
+  # 坐标轴辅助线
+  geom_vline(xintercept = 0, color = 'black', linewidth = 0.5, linetype = 2) +
+  geom_hline(yintercept = 0, color = 'black', linewidth = 0.5, linetype = 2) +
+  
+  # 坐标轴与标题
+  labs(
+    x = paste("PCo1 (", pcoa1, ")", sep = ""),
+    y = paste("PCo2 (", pcoa2, ")", sep = ""),
+    title = "High risk resistome"
+  ) +
+  
+  # 标注 Adonis R² 和 P
+  annotate(
+    'text',
+    label = paste0("R² = ", round(R2_value, 3),
+                   ", P = ", signif(P_value, 3)),
+    x = h1 - 0.1, y = 0.4, size = 8
+  )
+
+
+p21
+
+
+#ggsave("/Users/yangy/Documents/D/city/ARG/figure/composition/high_risk_PCOA.pdf",p21,width=8,height=6)
+
+#VFG
+##VFG PCOA
+rm(list=ls())
+library(rmarkdown)
+library(colorRamps)
+library(splitstackshape)
+library(ggnewscale)
+library(ggplot2)
+library(ape)
+library(umap)
+library(vegan)
+library(plyr)
+library(plotly)
+library(tidyverse)
+rm(list = ls())
+vfg0 <- read.csv("/Users/yangy/Documents/E/city/metagenome/vfdb/results/normalized_level1.csv",sep=",",header=T,row.names=1)
+
+vfg0 <- as.data.frame(t(vfg0))
+group0<-read.csv("/Users/yangy/Documents/E/city/metagenome/group.csv",sep=",",header=T,row.names=1)
+group0 <- na.omit(group0)
+group <- group0[order(rownames(group0)), ]
+vfg0$sample.id <- rownames(vfg0)
+group0$sample.id <- rownames(group0)
+colnames(vfg0)[(ncol(vfg0)-9):ncol(vfg0)]
+
+otu_all <- merge(vfg0, group0, by.x="sample.id", by.y="sample.id")
+colnames(otu_all)[(ncol(otu_all)-19):ncol(otu_all)]
+
+pcoa <- cmdscale(vegdist(decostand(otu_all[,2:5410], "hellinger"), method = 'bray'), 
+                 k = (nrow(otu_all) - 1), eig = TRUE)
+
+pcoa_exp <- pcoa$eig/sum(pcoa$eig)
+pcoa1 <- paste0(round(100*pcoa_exp[1], 2) ,'%')
+pcoa2 <- paste0(round(100*pcoa_exp[2], 2) ,'%')
+
+########总PCoA图中，group对微生物群落组成的影响
+permanova <- adonis2(decostand(otu_all[,2:5410],"hellinger") 
+                     ~ otu_all$group, 
+                     distance = 'bray', permutations = 999, parallel=60)###perm anova 与time和type的顺序没有影响 
+print(permanova)
+
+########bacteria pcoa1和pcoa2提取
+pcoa_all <- data.frame(pcoa$point)[1:2]
+pcoa_all$sample <- rownames(pcoa_all)
+pcoa_all$sample <- vfg0$sample.id
+pcoa_all <- merge(pcoa_all, group0, by.x = 'sample',by.y = "sample.id")
+names(pcoa_all)[2:3] <- c('pcoa1', 'pcoa2')
+
+########定义r值和P 值位置
+h1 <- max(pcoa_all$pcoa1)-0.20*(range(pcoa_all$pcoa1)[2]-range(pcoa_all$pcoa1)[1])
+
+polygon <- pcoa_all[,c("pcoa1", "pcoa2", "group")]
+find_hull <- function(df1) df1[chull(df1$pcoa1, df1$pcoa2), ]
+hulls <- ddply(polygon, "group", find_hull)
+
+
+R2_value <- permanova$R2[1]
+P_value <- permanova$`Pr(>F)`[1]
+
+p21 <- ggplot(data = pcoa_all, aes(pcoa1, pcoa2)) +
+  # 置信椭圆（无边框，仅半透明填充）
+  stat_ellipse(
+    aes(fill = group),
+    geom = "polygon",
+    color = NA,        # 不绘制边框
+    level = 0.95,
+    alpha = 0.08,      # 淡淡的透明度
+    show.legend = FALSE
+  ) +
+  
+  # 散点
+  geom_point(aes(color = group), size = 5) +
+  
+  # 手动定义颜色（散点 + 填充保持一致）
+  scale_fill_manual(values = c(
+    "Forest" = "#6cb509",
+    "Cropland" = "cyan",
+    "Industry" = "#5e9ceb",
+    "Urban" = "#ff7f27"
+  )) +
+  scale_colour_manual(values = c(
+    "Forest" = "#6cb509",
+    "Cropland" = "cyan",
+    "Industry" = "#5e9ceb",
+    "Urban" = "#ff7f27"
+  ),
+  breaks = c("Forest", "Cropland", "Industry", "Urban")) +
+  # 去掉图例标题
+  guides(color = guide_legend(title = NULL),
+         fill  = guide_legend(title = NULL)) +
+  # 主题
+  theme_bw() +
+  theme(
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 1),
+    legend.title = element_text(colour = "black", size = 20, face = "bold"),
+    legend.text = element_text(colour = "black", size = 20, face = "bold"),
+    axis.text = element_text(size = 22, colour = "black",face = "bold"),
+    axis.title = element_text(size = 24,colour = "black", face = "bold"),
+    plot.title = element_text(hjust = 0.5,colour = "black", face = "bold", size = 28)
+  ) +
+  # 坐标轴辅助线
+  geom_vline(xintercept = 0, color = 'black', linewidth = 0.5, linetype = 2) +
+  geom_hline(yintercept = 0, color = 'black', linewidth = 0.5, linetype = 2) +
+  
+  # 坐标轴与标题
+  labs(
+    x = paste("PCo1 (", pcoa1, ")", sep = ""),
+    y = paste("PCo2 (", pcoa2, ")", sep = ""),
+    title = "Virulome"
+  ) +
+  
+  # 标注 Adonis R² 和 P
+  annotate(
+    'text',
+    label = paste0("R² = ", round(R2_value, 3),
+                   ", P = ", signif(P_value, 3)),
+    x = h1 - 0.1, y = 0.25, size = 8
+  )
+p21
+ggsave("/Users/yangy/Documents/D/city/ARG/figure/composition/vfg_PCOA.pdf",p21,width=8,height=6)
+
+
+#MGE
+library(vegan)
+library(plyr)
+library(ggplot2)
+rm(list=ls())
+mge<-read.csv("/Users/yangy/Documents/E/city/metagenome/mge/results/normalized_level1_percell.csv",sep=",",header=T,row.names=1)
+mge <- as.data.frame(t(mge))
+group0<-read.csv("/Users/yangy/Documents/E/city/metagenome/group.csv",sep=",",header=T,row.names=1)
+group0 <- na.omit(group0)
+group <- group0[order(rownames(group0)), ]
+mge$sample.id <- rownames(mge)
+group0$sample.id <- rownames(group0)
+
+colnames(mge)[(ncol(mge)-9):ncol(mge)]
+otu_all <- merge(mge, group0, by.x="sample.id", by.y="sample.id")
+colnames(otu_all)[(ncol(otu_all)-19):ncol(otu_all)]
+
+dist<-vegdist(decostand(otu_all[,2:1432],"hellinger"),"bray")
+bd<-betadisper(dist,factor(group$group))
+print (anova(bd))
+
+pcoa <- cmdscale(vegdist(decostand(otu_all[,2:1432], "hellinger"), method = 'bray'), 
+                 k = (nrow(otu_all) - 1), eig = TRUE)
+pcoa_exp <- pcoa$eig/sum(pcoa$eig)
+pcoa1 <- paste0(round(100*pcoa_exp[1], 2) ,'%')
+pcoa2 <- paste0(round(100*pcoa_exp[2], 2) ,'%')
+permanova <- adonis2(decostand(otu_all[,2:1432],"hellinger") 
+                     ~ otu_all$group, 
+                     distance = 'bray', permutations = 999, parallel=60)###perm anova 与time和type的顺序没有影响 
+print(permanova)
+pcoa_all <- data.frame(pcoa$point)[1:2]
+pcoa_all$sample <- rownames(pcoa_all)
+pcoa_all$sample <- mge$sample.id
+pcoa_all <- merge(pcoa_all, group0, by.x = 'sample',by.y = "sample.id")
+names(pcoa_all)[2:3] <- c('pcoa1', 'pcoa2')
+
+########定义r值和P 值位置
+h1 <- max(pcoa_all$pcoa1)-0.20*(range(pcoa_all$pcoa1)[2]-range(pcoa_all$pcoa1)[1])
+
+polygon <- pcoa_all[,c("pcoa1", "pcoa2", "group")]
+find_hull <- function(df1) df1[chull(df1$pcoa1, df1$pcoa2), ]
+hulls <- ddply(polygon, "group", find_hull)
+
+
+R2_value <- permanova$R2[1]
+P_value <- permanova$`Pr(>F)`[1]
+
+# ggplot 
+p21 <- ggplot(data = pcoa_all, aes(pcoa1, pcoa2)) +
+  # 置信椭圆（无边框，仅半透明填充）
+  stat_ellipse(
+    aes(fill = group),
+    geom = "polygon",
+    color = NA,        # 不绘制边框
+    level = 0.95,
+    alpha = 0.08,      # 淡淡的透明度
+    show.legend = FALSE
+  ) +
+  
+  # 散点
+  geom_point(aes(color = group), size = 5) +
+  
+  # 手动定义颜色（散点 + 填充保持一致）
+  scale_fill_manual(values = c(
+    "Forest" = "#6cb509",
+    "Cropland" = "cyan",
+    "Industry" = "#5e9ceb",
+    "Urban" = "#ff7f27"
+  )) +
+  scale_colour_manual(values = c(
+    "Forest" = "#6cb509",
+    "Cropland" = "cyan",
+    "Industry" = "#5e9ceb",
+    "Urban" = "#ff7f27"
+  ),
+  breaks = c("Forest", "Cropland", "Industry", "Urban")) +
+  # 去掉图例标题
+  guides(color = guide_legend(title = NULL),
+         fill  = guide_legend(title = NULL)) +
+  # 主题
+  theme_bw() +
+  theme(
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 1),
+    legend.title = element_text(colour = "black", size = 20, face = "bold"),
+    legend.text = element_text(colour = "black", size = 20, face = "bold"),
+    axis.text = element_text(size = 22, colour = "black",face = "bold"),
+    axis.title = element_text(size = 24,colour = "black", face = "bold"),
+    plot.title = element_text(hjust = 0.5,colour = "black", face = "bold", size = 28)
+  ) +
+  
+  # 坐标轴辅助线
+  geom_vline(xintercept = 0, color = 'black', linewidth = 0.5, linetype = 2) +
+  geom_hline(yintercept = 0, color = 'black', linewidth = 0.5, linetype = 2) +
+  
+  # 坐标轴与标题
+  labs(
+    x = paste("PCo1 (", pcoa1, ")", sep = ""),
+    y = paste("PCo2 (", pcoa2, ")", sep = ""),
+    title = "Mobilome"
+  ) +
+  
+  # 标注 Adonis R² 和 P
+  annotate(
+    'text',
+    label = paste0("R² = ", round(R2_value, 3),
+                   ", P = ", signif(P_value, 3)),
+    x = h1 - 0.1, y = 0.36, size = 8
+  )
+p21
+#ggsave("/Users/yangy/Documents/D/city/ARG/figure/composition/mge_PCOA.pdf",p21,width=8,height=6)
+
+#f热图环境因子和diversity
+library(vegan)
+library(ggplot2)
+library(linkET)
+library(dplyr)
+rm(list=ls())
+#
+arg <- read.csv("/Users/yangy/Documents/E/city/metagenome/arg/results/normalized_percell.csv",sep=",",header=T,row.names=1)
+
+high <-read.csv("/Users/yangy/Documents/E/city/metagenome/arg/results/high_risk_arg.csv",sep=",",header=T,row.names=1)
+high<-high[,-1]
+
+otu_all0 <- read.csv("/Users/yangy/Documents/E/city/bacteria/bacteria_flattening.csv",check.names = F,row.names = 1,header = T)
+otu_all0 <- as.data.frame(t(otu_all0))
+# Read metadata file
+group0 <- read.csv("/Users/yangy/Documents/E/city/metagenome/group1.csv",header = T,row.names = 1)
+group0 <- na.omit(group0)
+group <- group0[order(group0$sample.id),]
+otu_all0$sample.id <- rownames(otu_all0)
+otu_sub <- otu_all0[otu_all0$sample.id %in% group$sample.id,]
+otu<-otu_sub[,1:6927]
+otu <- otu[, colSums(otu) != 0]
+otu<-as.data.frame(t(otu))
+group0 <- read.csv("/Users/yangy/Documents/E/city/metagenome/group1.csv",header = T,row.names = 1)
+group <- group0[order(group0$sample.id),]
+otu <- otu[order(row.names(otu)),]
+arg <- arg[order(row.names(arg)),]
+high <- high[order(row.names(high)),]
+
+mge<-read.csv("/Users/yangy/Documents/E/city/metagenome/mge/results/normalized_level1_percell.csv",sep=",",header=T,row.names=1)
+vfg <- read.csv("/Users/yangy/Documents/E/city/metagenome/vfdb/results/normalized_level1.csv",sep=",",header=T,row.names=1)
+mge <- mge[, order(colnames(mge))]
+vfg <- vfg[, order(colnames(vfg))]
+
+colnames(otu) == group0$sample.id
+colnames(arg) == group0$sample.id
+colnames(high) == group0$sample.id
+colnames(mge) == group0$sample.id
+
+otu_all <- rbind(otu,arg,high,vfg,mge)
+otu_all <- as.data.frame(t(otu_all))
+
+spec_select <- list(Bacteria = 1:6641,
+                    ARG = 6642:11184,
+                    high=11185:11257,
+                    vfg=11258:16666,
+                    mge=16667:18097)
+# Combine diversity with environment factor
+env <- group[,c(4:18)]
+
+rownames(env) <- group[,1]
+
+title_mapping <- list(
+  "Latitude" = "Latitude",
+  "Longitude" = "Longitude",
+  "MAT" = "Mean annual temperature",
+  "MAP" = "Mean annual precipitation",
+  "Aridity.index" = "Aridity index",
+  "Per.capita.GDP" = "GDP per capita",
+  "population.density" = "Population density",
+  "PM2.5" = "Air PM2.5",
+  "SO2" = "Air SO2",
+  "PM10" = "Air PM10",
+  "NO2" = "Air NO2",
+  "CO" = "Air CO",
+  "O3" = "Air O3",
+  "HDI" = "Human Development Index",
+  "pH" = "Soil pH"
+)
+
+
+
+
+env_order <- c("Latitude",
+               "Longitude",
+               "MAT",
+               "MAP",
+               "Aridity.index",
+               "pH",
+               "PM2.5",
+               "SO2",
+               "PM10",
+               "NO2",
+               "CO",
+               "O3",
+               "Per.capita.GDP" ,
+               "population.density",
+               "HDI")
+env_order <- env_order[env_order %in% colnames(env)]
+env <- env[, env_order]
+env_named <- env
+colnames(env_named) <- sapply(colnames(env_named), function(x) title_mapping[[x]] %||% x)
+
+env2 <- env_named  # 替换后版本用于 Mantel 分析与绘图
+
+# 1. All
+set.seed(42)
+df_mantel <- mantel_test(otu_all, env2,
+                         spec_dist = 'bray',
+                         env_dist = 'euclidean',
+                         spec_select = spec_select)
+
+df_mantel <- df_mantel %>%
+  mutate(df_r = cut(r, breaks = c(-Inf, 0.1, 0.2, 0.4, Inf),
+                    labels = c("< 0.1", "0.1 - 0.2", "0.2 - 0.4", ">= 0.4")),
+         df_p = cut(p, breaks = c(-Inf, 0.01, 0.05, Inf),
+                    labels = c("< 0.01", "0.01 - 0.05", ">= 0.05")))
+
+p_all <- qcorrplot(correlate(env2, method = "spearman"), type = "lower", diag = FALSE) +
+  geom_square() +
+  geom_mark(sep = '\n', sig_thres = 0.05, size = 3.5, color = "white") +
+  geom_couple(data = df_mantel, aes(color = df_p, size = df_r), 
+              nudge_x = 0.5, curvature = nice_curvature(0.1, by = "to"), 
+              label.fontface = 2, label.size = 5) +
+  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu")) +
+  scale_size_manual(values = c(0.5, 1, 1.5, 2)) +
+  scale_colour_manual(values = color_pal(3)) +
+  guides(size = guide_legend(title = "Mantel's r",
+                             override.aes = list(colour = "grey35"), order = 2),
+         colour = guide_legend(title = "Mantel's p",
+                               override.aes = list(size = 3), order = 1),
+         fill = guide_colorbar(title = "Spearman's r", order = 3)) +
+  theme(plot.title = element_text(size=20, face = "bold", hjust = 0.5),
+        axis.text = element_text(size = 12, face = "bold"),
+        legend.title = element_text(size = 15, face = "bold"),
+        legend.text = element_text(size = 12, face = "bold"))
+
+p_all
+
+
+env_groups <- unique(group$group)  # Forest, Cropland, Industry, Urban
+spec_select_list <- list()
+
+for (g in env_groups) {
+  # Bacteria
+  samples_g <- group$sample.id[group$group == g]
+  spec_select_list[[paste0("Bacteria_", g)]] <- colnames(otu)[colnames(otu) %in% samples_g]
+  
+  # ARG
+  spec_select_list[[paste0("ARG_", g)]] <- colnames(arg)[colnames(arg) %in% samples_g]
+  
+  # High-risk ARG
+  spec_select_list[[paste0("High_", g)]] <- colnames(high)[colnames(high) %in% samples_g]
+  #VFG
+  spec_select_list[[paste0("VFG_", g)]] <- colnames(vfg)[colnames(vfg) %in% samples_g]
+  #MGE
+  spec_select_list[[paste0("MGE_", g)]] <- colnames(mge)[colnames(mge) %in% samples_g]
+}
+
+results_list <- list()
+for (species_env in names(spec_select_list)) {
+  
+  # 根据 species_env 选择数据
+  if (grepl("Bacteria", species_env)) {
+    otu_sub <- otu[, group$sample.id %in% group$sample.id[group$group == sub("Bacteria_", "", species_env)]]
+    
+  } else if (grepl("ARG", species_env) & !grepl("High", species_env)) {
+    otu_sub <- arg[, group$sample.id %in% group$sample.id[group$group == sub("ARG_", "", species_env)]]
+    
+  } else if (grepl("High", species_env)) {
+    otu_sub <- high[, group$sample.id %in% group$sample.id[group$group == sub("High_", "", species_env)]]
+    
+  } else if (grepl("VFG", species_env)) {
+    otu_sub <- vfg[, group$sample.id %in% group$sample.id[group$group == sub("VFG_", "", species_env)]]
+    
+  } else if (grepl("MGE", species_env)) {
+    otu_sub <- mge[, group$sample.id %in% group$sample.id[group$group == sub("MGE_", "", species_env)]]
+  }
+  
+  # 环境子集
+  env_sub <- env2[rownames(env2) %in% colnames(otu_sub), ]
+  
+  # Mantel test
+  df_mantel <- mantel_test(
+    t(otu_sub), env_sub,
+    spec_dist = 'bray',
+    env_dist = 'euclidean',
+    spec_select = list(1:nrow(otu_sub))  # 使用全部行
+  )
+  
+  df_mantel$group <- sub(".*_", "", species_env)
+  df_mantel$species <- gsub("_.*", "", species_env)
+  
+  results_list[[species_env]] <- df_mantel
+}
+
+
+df_mantel_all <- bind_rows(results_list)
+
+df_mantel_all <- df_mantel_all %>%
+  mutate(group1 = paste(species,group, sep = " "))
+df_mantel_all<-df_mantel_all[,-1]
+df_mantel_all <- df_mantel_all %>%
+  dplyr::select(group1, everything()) %>%  # 把 group1 放到第一列
+  dplyr::rename(spec = group1)
+
+
+df_mantel_all <- df_mantel_all %>%
+  mutate(df_r = cut(r, breaks = c(-Inf, 0.1, 0.2, 0.4, Inf),
+                    labels = c("<0.1", "0.1-0.2", "0.2-0.4", ">=0.4")),
+         df_p = cut(p, breaks = c(-Inf, 0.01, 0.05, Inf),
+                    labels = c("<0.01", "0.01-0.05", ">=0.05")))
+
+#df_mantel_all$spec <- gsub("^ARG", "Resistome", df_mantel_all$spec)
+#df_mantel_all$spec <- gsub("^High", "High risk resistome", df_mantel_all$spec)
+#df_mantel_all$spec <- gsub("^VFG", "VFGs", df_mantel_all$spec)
+#df_mantel_all$spec <- gsub("^MGE", "MGEs", df_mantel_all$spec)
+
+df_mantel_all$spec <- factor(df_mantel_all$spec,
+                             levels = c(
+                               "Bacteria Forest", "Bacteria Cropland", "Bacteria Industry", "Bacteria Urban",
+                               "ARG Forest", "ARG Cropland", "ARG Industry", "ARG Urban",
+                               "High Forest", "High Cropland",
+                               "High Industry", "High Urban",
+                               "VFG Forest","VFG Cropland","VFG Industry","VFG Urban",
+                               "MGE Forest" ,"MGE Cropland","MGE Industry","MGE Urban"
+                             )
+)
+
+#df_mantel_all$spec <- gsub("High risk resistome", "High risk\nresistome", df_mantel_all$spec)
+
+# 重新设置顺序
+df_mantel_all$spec <- factor(df_mantel_all$spec,
+                             levels = c(
+                               "Bacteria Forest", "ARG Forest", "High Forest", "VFG Forest", "MGE Forest",
+                               "Bacteria Cropland", "ARG Cropland", "High Cropland", "VFG Cropland", "MGE Cropland",
+                               "Bacteria Industry", "ARG Industry", "High Industry", "VFG Industry", "MGE Industry",
+                               "Bacteria Urban", "ARG Urban", "High Urban", "VFG Urban", "MGE Urban"
+                             ))
+
+
+
+
+# 绘图
+p_all <- qcorrplot(correlate(env2, method='spearman'), type='lower', diag=FALSE) +
+  geom_square() +
+  geom_mark(sep='\n', sig_thres=0.05, size=3.5, color='white') +
+  geom_couple(data=df_mantel_all, aes(color=df_p, size=df_r), nudge_x=0.5, curvature=nice_curvature(0.1, by='to'), label.fontface=2, label.size=3) +
+  scale_fill_gradientn(colours=RColorBrewer::brewer.pal(11,'RdBu')) +
+  scale_size_manual(values=c(0.5,1,1.5,2)) +
+  scale_colour_manual(values=color_pal(3)) +
+  guides(size=guide_legend(title="Mantel's r", override.aes=list(colour="grey35"), order=2),
+         colour=guide_legend(title="Mantel's p", override.aes=list(size=3), order=1),
+         fill=guide_colorbar(title="Spearman's r", order=3)) +
+  theme(plot.title=element_text(size=22, face='bold', hjust=0.5),
+        axis.text=element_text(size=15, face='bold'),
+        legend.title=element_text(size=16, face='bold'),
+        legend.text=element_text(size=15, face='bold'))
+
+p_all
+
+#g-i
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(broom)
+library(ggplot2)
+library(vegan)
+library(ggthemes)
+
+
+library(dplyr)
+library(ggplot2)
+rm(list=ls())
+library(reshape2)
+phylum<-read.csv("/Users/yangy/Documents/E/city/metagenome/arg/results/108bac/2.community_composition/phylum_filter.csv",sep=",",header=T,row.names=1)
+top15 <- phylum[order(phylum$sum, decreasing = TRUE)[1:20], ]
+phylum<<-top15
+
+phylum<-phylum[,-110]
+phylum<-t(phylum)
+phylum<-phylum[-1,]
+phylum<-as.data.frame(phylum)
+group<-read.csv("/Users/yangy/Documents/E/city/metagenome/group.csv",sep=",",header=T,row.names=1)
+group <- group[order(rownames(group)),]
+
+phylum <- phylum[order(rownames(phylum)),]
+identical(rownames(group), rownames(phylum))
+
+
+phylum$group<-group$group
+phylum$Location<-group$Location
+
+treatment_data_phylum <- phylum[phylum$group == "Cropland",]
+control_data_phylum <- phylum[phylum$group == "Forest",]
+urban_data_phylum<-phylum[phylum$group == "Urban",]
+industry_data_phylum<-phylum[phylum$group == "Industry",]
+library(readr)
+
+
+treatment_data_phylum <- treatment_data_phylum %>%
+  mutate(across(1:20, ~ parse_number(as.character(.))))
+
+
+control_data_phylum <- control_data_phylum %>%
+  mutate(across(1:20, ~ parse_number(as.character(.))))
+
+industry_data_phylum <- industry_data_phylum %>%
+  mutate(across(1:20, ~ parse_number(as.character(.))))
+
+
+urban_data_phylum <- urban_data_phylum %>%
+  mutate(across(1:20, ~ parse_number(as.character(.))))
+
+summary_data_cropland_phylum <- treatment_data_phylum %>%
+  group_by(group) %>%
+  summarise(
+    across(1:20,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_forest_phylum <- control_data_phylum %>%
+  group_by(group) %>%
+  summarise(
+    across(1:20,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_urban_phylum <- urban_data_phylum %>%
+  group_by(group) %>%
+  summarise(
+    across(1:20,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_industry_phylum <- industry_data_phylum %>%
+  group_by(group) %>%
+  summarise(
+    across(1:20,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+
+
+##生成df_cropland
+summary_data_cropland1_phylum<-melt(summary_data_cropland_phylum)
+
+
+data_phylum<-summary_data_cropland1_phylum
+result_phylum <- data.frame(Factor = character(),
+                            Type = character(),
+                            Value = numeric(),
+                            stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_phylum)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_phylum$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_phylum$variable[i])) {
+    result_phylum <- rbind(result_phylum, data.frame(Factor = factor_name, Type = "mean", Value = data_phylum$value[i]))
+  } else if (grepl("_sd", data_phylum$variable[i])) {
+    result_phylum <- rbind(result_phylum, data.frame(Factor = factor_name, Type = "sd", Value = data_phylum$value[i]))
+  }
+}
+
+head(result_phylum)
+
+result_sd_phylum <- result_phylum %>%
+  filter(Type == "sd")
+result_mean_phylum<- result_phylum %>%
+  filter(Type == "mean")
+colnames(result_sd_phylum)[3]<-"SD"
+colnames(result_mean_phylum)[3]<-"Mean"
+cropland_phylum <- cbind(result_mean_phylum, result_sd_phylum)
+
+colnames(cropland_phylum)[1]<-"TR"
+colnames(cropland_phylum)[3]<-"TM"
+colnames(cropland_phylum)[6]<-"TSD"
+cropland_phylum<-cropland_phylum[,-c(2,4,5)]
+cropland_phylum$TN<-"27"
+
+
+
+##生成df_industry
+summary_data_industry1_phylum<-melt(summary_data_industry_phylum)
+data_phylum<-summary_data_industry1_phylum
+result_phylum <- data.frame(Factor = character(),
+                            Type = character(),
+                            Value = numeric(),
+                            stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_phylum)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_phylum$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_phylum$variable[i])) {
+    result_phylum <- rbind(result_phylum, data.frame(Factor = factor_name, Type = "mean", Value = data_phylum$value[i]))
+  } else if (grepl("_sd", data_phylum$variable[i])) {
+    result_phylum <- rbind(result_phylum, data.frame(Factor = factor_name, Type = "sd", Value = data_phylum$value[i]))
+  }
+}
+
+head(result_phylum)
+
+
+result_sd_phylum <- result_phylum %>%
+  filter(Type == "sd")
+result_mean_phylum<- result_phylum %>%
+  filter(Type == "mean")
+colnames(result_sd_phylum)[3]<-"SD"
+colnames(result_mean_phylum)[3]<-"Mean"
+
+industry_phylum <- cbind(result_mean_phylum, result_sd_phylum)
+
+
+colnames(industry_phylum)[1]<-"TR"
+colnames(industry_phylum)[3]<-"TM"
+colnames(industry_phylum)[6]<-"TSD"
+industry_phylum<-industry_phylum[,-c(2,4,5)]
+industry_phylum$TN<-"27"
+
+##生成df_urban
+summary_data_urban1_phylum<-melt(summary_data_urban_phylum)
+data_phylum<-summary_data_urban1_phylum
+result_phylum <- data.frame(Factor = character(),
+                            Type = character(),
+                            Value = numeric(),
+                            stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_phylum)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_phylum$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_phylum$variable[i])) {
+    result_phylum <- rbind(result_phylum, data.frame(Factor = factor_name, Type = "mean", Value = data_phylum$value[i]))
+  } else if (grepl("_sd", data_phylum$variable[i])) {
+    result_phylum <- rbind(result_phylum, data.frame(Factor = factor_name, Type = "sd", Value = data_phylum$value[i]))
+  }
+}
+
+head(result_phylum)
+
+result_sd_phylum <- result_phylum %>%
+  filter(Type == "sd")
+result_mean_phylum<- result_phylum %>%
+  filter(Type == "mean")
+colnames(result_sd_phylum)[3]<-"SD"
+colnames(result_mean_phylum)[3]<-"Mean"
+
+urban_phylum <- cbind(result_mean_phylum, result_sd_phylum)
+
+colnames(urban_phylum)[1]<-"TR"
+colnames(urban_phylum)[3]<-"TM"
+colnames(urban_phylum)[6]<-"TSD"
+urban_phylum<-urban_phylum[,-c(2,4,5)]
+urban_phylum$TN<-"27"
+
+
+
+##生成df_forest
+summary_data_forest1_phylum<-melt(summary_data_forest_phylum)
+
+
+data_phylum<-summary_data_forest1_phylum
+result_phylum <- data.frame(Factor = character(),
+                            Type = character(),
+                            Value = numeric(),
+                            stringsAsFactors = FALSE)
+
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_phylum)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_phylum$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_phylum$variable[i])) {
+    result_phylum <- rbind(result_phylum, data.frame(Factor = factor_name, Type = "mean", Value = data_phylum$value[i]))
+  } else if (grepl("_sd", data_phylum$variable[i])) {
+    result_phylum <- rbind(result_phylum, data.frame(Factor = factor_name, Type = "sd", Value = data_phylum$value[i]))
+  }
+}
+
+
+head(result_phylum)
+
+result_sd_phylum <- result_phylum %>%
+  filter(Type == "sd")
+result_mean_phylum<- result_phylum %>%
+  filter(Type == "mean")
+colnames(result_sd_phylum)[3]<-"SD"
+colnames(result_mean_phylum)[3]<-"Mean"
+
+forest_phylum <- cbind(result_mean_phylum, result_sd_phylum)
+
+colnames(forest_phylum)[1]<-"TR"
+colnames(forest_phylum)[3]<-"CM"
+colnames(forest_phylum)[6]<-"SCD"
+forest_phylum<-forest_phylum[,-c(2,4,5)]
+forest_phylum$CN<-"27"
+
+
+df_cropland_phylum<-cbind(cropland_phylum,forest_phylum)
+df_cropland_phylum<-df_cropland_phylum[,-5]
+df_urban_phylum<-cbind(urban_phylum,forest_phylum)
+df_urban_phylum<-df_urban_phylum[,-5]
+df_industry_phylum<-cbind(industry_phylum,forest_phylum)
+df_industry_phylum<-df_industry_phylum[,-5]
+
+
+##计算cropland的效应值
+library(metafor)
+df_cropland_phylum$TN <- as.numeric(df_cropland_phylum$TN)
+df_cropland_phylum$CN <- as.numeric(df_cropland_phylum$CN)
+d2_phylum<-escalc(measure="ROM",data=df_cropland_phylum,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_phylum <- na.omit(d2_phylum)
+head(d2_phylum)
+
+r1_phylum<-rma(yi,vi, data=d2_phylum, method="REML")
+summary(r1_phylum)
+
+library(metafor)
+
+
+rActinobacteriota<-rma(yi,vi, data=subset(d2_phylum,TR=="Actinobacteriota"), method="REML")
+rProteobacteria<-rma(yi,vi, data=subset(d2_phylum,TR=="Proteobacteria"), method="REML")
+rAcidobacteriota<-rma(yi,vi, data=subset(d2_phylum,TR=="Acidobacteriota"), method="REML")
+rPlanctomycetota<-rma(yi,vi, data=subset(d2_phylum,TR=="Planctomycetota"), method="REML")
+rChloroflexi<-rma(yi,vi, data=subset(d2_phylum,TR=="Chloroflexi"), method="REML")
+rFirmicutes<-rma(yi,vi, data=subset(d2_phylum,TR=="Firmicutes"), method="REML")
+rMyxococcota<-rma(yi,vi, data=subset(d2_phylum,TR=="Myxococcota"), method="REML")
+rVerrucomicrobiota<-rma(yi,vi, data=subset(d2_phylum,TR=="Verrucomicrobiota"), method="REML")
+rGemmatimonadota<-rma(yi,vi, data=subset(d2_phylum,TR=="Gemmatimonadota"), method="REML")
+rMethylomirabilota<-rma(yi,vi, data=subset(d2_phylum,TR=="Methylomirabilota"), method="REML")
+rBacteroidota<-rma(yi,vi, data=subset(d2_phylum,TR=="Bacteroidota"), method="REML")
+rCyanobacteria<-rma(yi,vi, data=subset(d2_phylum,TR=="Cyanobacteria"), method="REML")
+rArmatimonadota<-rma(yi,vi, data=subset(d2_phylum,TR=="Armatimonadota"), method="REML")
+rNitrospirota<-rma(yi,vi, data=subset(d2_phylum,TR=="Nitrospirota"), method="REML")
+rLatescibacterota<-rma(yi,vi, data=subset(d2_phylum,TR=="Latescibacterota"), method="REML")
+rDesulfobacterota<-rma(yi,vi, data=subset(d2_phylum,TR=="Desulfobacterota"), method="REML")
+rRCP2_54<-rma(yi,vi, data=subset(d2_phylum,TR=="RCP2-54"), method="REML")
+rMBNT15<-rma(yi,vi, data=subset(d2_phylum,TR=="MBNT15"), method="REML")
+rWPS<-rma(yi,vi, data=subset(d2_phylum,TR=="WPS-2"), method="REML")
+rBdellovibrionota<-rma(yi,vi, data=subset(d2_phylum,TR=="Bdellovibrionota"), method="REML")
+
+
+
+summary(rActinobacteriota)
+summary(rProteobacteria)
+summary(rAcidobacteriota)
+summary(rPlanctomycetota)
+summary(rChloroflexi)
+summary(rFirmicutes)
+summary(rMyxococcota)
+summary(rVerrucomicrobiota)
+summary(rGemmatimonadota)
+summary(rMethylomirabilota)
+summary(rBacteroidota)
+summary(rCyanobacteria)
+summary(rArmatimonadota)
+summary(rNitrospirota)
+summary(rLatescibacterota)
+summary(rDesulfobacterota)
+summary(rRCP2_54)
+summary(rMBNT15)
+summary(rWPS)
+summary(rBdellovibrionota)
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "Actinobacteriota", "Proteobacteria", "Acidobacteriota", 
+  "Planctomycetota", "Chloroflexi", "Firmicutes", 
+  "Myxococcota", "Verrucomicrobiota", "Gemmatimonadota", "Methylomirabilota", 
+  "Bacteroidota", "Cyanobacteria", "Armatimonadota", 
+  "Nitrospirota",  "Latescibacterota","Desulfobacterota","RCP2-54" ,"MBNT15","WPS-2" , "Bdellovibrionota" 
+)
+# 将所有模型存储为列表
+modelsd2_phylum <- list(
+  rActinobacteriota, rProteobacteria, rAcidobacteriota, 
+  rPlanctomycetota, rChloroflexi, rFirmicutes,
+  rMyxococcota, rVerrucomicrobiota, rGemmatimonadota, rMethylomirabilota, 
+  rBacteroidota, rCyanobacteria, rArmatimonadota, 
+  rNitrospirota,  rLatescibacterota,rDesulfobacterota,rRCP2_54,rMBNT15,rWPS,rBdellovibrionota
+)
+
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+
+results_cropland2_phylum <- lapply(1:length(modelsd2_phylum), function(i) {
+  tidy(modelsd2_phylum[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+# 将所有模型的结果合并为一个数据框
+cropland_resultsd2_phylum <- bind_rows(results_cropland2_phylum, .id = "Model")
+
+cropland_resultsd2_phylum <-cropland_resultsd2_phylum [,c(4,5,7,8)]
+colnames(cropland_resultsd2_phylum)[4]<-"index"
+colnames(cropland_resultsd2_phylum)[1]<-"Estimate"
+colnames(cropland_resultsd2_phylum)[2]<-"SE"
+colnames(cropland_resultsd2_phylum)[3]<-"p"
+cropland2_phylum<-cropland_resultsd2_phylum
+cropland2_phylum$significant <- ifelse(cropland2_phylum$p <= 0.001, "***",
+                                       ifelse(cropland2_phylum$p <= 0.01, "**",
+                                              ifelse(cropland2_phylum$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+cropland2_phylum$index <- reorder(cropland2_phylum$index, abs(cropland2_phylum$Estimate))
+
+#计算industry的效应值
+df_industry_phylum$TN <- as.numeric(df_industry_phylum$TN)
+df_industry_phylum$CN <- as.numeric(df_industry_phylum$CN)
+d2_phylum<-escalc(measure="ROM",data=df_industry_phylum,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_phylum <- na.omit(d2_phylum)
+head(d2_phylum)
+
+r1_phylum<-rma(yi,vi, data=d2_phylum, method="REML")
+summary(r1_phylum)
+
+library(metafor)
+
+
+rActinobacteriota<-rma(yi,vi, data=subset(d2_phylum,TR=="Actinobacteriota"), method="REML")
+rProteobacteria<-rma(yi,vi, data=subset(d2_phylum,TR=="Proteobacteria"), method="REML")
+rAcidobacteriota<-rma(yi,vi, data=subset(d2_phylum,TR=="Acidobacteriota"), method="REML")
+rPlanctomycetota<-rma(yi,vi, data=subset(d2_phylum,TR=="Planctomycetota"), method="REML")
+rChloroflexi<-rma(yi,vi, data=subset(d2_phylum,TR=="Chloroflexi"), method="REML")
+rFirmicutes<-rma(yi,vi, data=subset(d2_phylum,TR=="Firmicutes"), method="REML")
+rMyxococcota<-rma(yi,vi, data=subset(d2_phylum,TR=="Myxococcota"), method="REML")
+rVerrucomicrobiota<-rma(yi,vi, data=subset(d2_phylum,TR=="Verrucomicrobiota"), method="REML")
+rGemmatimonadota<-rma(yi,vi, data=subset(d2_phylum,TR=="Gemmatimonadota"), method="REML")
+rMethylomirabilota<-rma(yi,vi, data=subset(d2_phylum,TR=="Methylomirabilota"), method="REML")
+rBacteroidota<-rma(yi,vi, data=subset(d2_phylum,TR=="Bacteroidota"), method="REML")
+rCyanobacteria<-rma(yi,vi, data=subset(d2_phylum,TR=="Cyanobacteria"), method="REML")
+rArmatimonadota<-rma(yi,vi, data=subset(d2_phylum,TR=="Armatimonadota"), method="REML")
+rNitrospirota<-rma(yi,vi, data=subset(d2_phylum,TR=="Nitrospirota"), method="REML")
+rLatescibacterota<-rma(yi,vi, data=subset(d2_phylum,TR=="Latescibacterota"), method="REML")
+rDesulfobacterota<-rma(yi,vi, data=subset(d2_phylum,TR=="Desulfobacterota"), method="REML")
+rRCP2_54<-rma(yi,vi, data=subset(d2_phylum,TR=="RCP2-54"), method="REML")
+rMBNT15<-rma(yi,vi, data=subset(d2_phylum,TR=="MBNT15"), method="REML")
+rWPS<-rma(yi,vi, data=subset(d2_phylum,TR=="WPS-2"), method="REML")
+rBdellovibrionota<-rma(yi,vi, data=subset(d2_phylum,TR=="Bdellovibrionota"), method="REML")
+
+summary(rActinobacteriota)
+summary(rProteobacteria)
+summary(rAcidobacteriota)
+summary(rPlanctomycetota)
+summary(rChloroflexi)
+summary(rFirmicutes)
+summary(rMyxococcota)
+summary(rVerrucomicrobiota)
+summary(rGemmatimonadota)
+summary(rMethylomirabilota)
+summary(rBacteroidota)
+summary(rCyanobacteria)
+summary(rArmatimonadota)
+summary(rNitrospirota)
+summary(rLatescibacterota)
+summary(rDesulfobacterota)
+summary(rRCP2_54)
+summary(rMBNT15)
+summary(rWPS)
+summary(rBdellovibrionota)
+
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "Actinobacteriota", "Proteobacteria", "Acidobacteriota", 
+  "Planctomycetota", "Chloroflexi", "Firmicutes", 
+  "Myxococcota", "Verrucomicrobiota", "Gemmatimonadota", "Methylomirabilota", 
+  "Bacteroidota", "Cyanobacteria", "Armatimonadota", 
+  "Nitrospirota",  "Latescibacterota","Desulfobacterota","RCP2-54" ,"MBNT15","WPS-2" , "Bdellovibrionota" 
+)
+# 将所有模型存储为列表
+modelsd2_phylum <- list(
+  rActinobacteriota, rProteobacteria, rAcidobacteriota, 
+  rPlanctomycetota, rChloroflexi, rFirmicutes,
+  rMyxococcota, rVerrucomicrobiota, rGemmatimonadota, rMethylomirabilota, 
+  rBacteroidota, rCyanobacteria, rArmatimonadota, 
+  rNitrospirota,  rLatescibacterota,rDesulfobacterota,rRCP2_54,rMBNT15,rWPS,rBdellovibrionota
+)
+
+
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+
+results_industry2_phylum <- lapply(1:length(modelsd2_phylum), function(i) {
+  tidy(modelsd2_phylum[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+# 将所有模型的结果合并为一个数据框
+industry_resultsd2_phylum <- bind_rows(results_industry2_phylum, .id = "Model")
+
+industry_resultsd2_phylum <-industry_resultsd2_phylum [,c(4,5,7,8)]
+colnames(industry_resultsd2_phylum)[4]<-"index"
+colnames(industry_resultsd2_phylum)[1]<-"Estimate"
+colnames(industry_resultsd2_phylum)[2]<-"SE"
+colnames(industry_resultsd2_phylum)[3]<-"p"
+industry2_phylum<-industry_resultsd2_phylum
+industry2_phylum$significant <- ifelse(industry2_phylum$p <= 0.001, "***",
+                                       ifelse(industry2_phylum$p <= 0.01, "**",
+                                              ifelse(industry2_phylum$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+industry2_phylum$index <- reorder(industry2_phylum$index, abs(industry2_phylum$Estimate))
+
+
+
+#计算urban的效应值
+df_urban_phylum$TN <- as.numeric(df_urban_phylum$TN)
+df_urban_phylum$CN <- as.numeric(df_urban_phylum$CN)
+d2_phylum<-escalc(measure="ROM",data=df_urban_phylum,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_phylum <- na.omit(d2_phylum)
+head(d2_phylum)
+
+r1_phylum<-rma(yi,vi, data=d2_phylum, method="REML")
+summary(r1_phylum)
+
+library(metafor)
+
+
+rActinobacteriota<-rma(yi,vi, data=subset(d2_phylum,TR=="Actinobacteriota"), method="REML")
+rProteobacteria<-rma(yi,vi, data=subset(d2_phylum,TR=="Proteobacteria"), method="REML")
+rAcidobacteriota<-rma(yi,vi, data=subset(d2_phylum,TR=="Acidobacteriota"), method="REML")
+rPlanctomycetota<-rma(yi,vi, data=subset(d2_phylum,TR=="Planctomycetota"), method="REML")
+rChloroflexi<-rma(yi,vi, data=subset(d2_phylum,TR=="Chloroflexi"), method="REML")
+rFirmicutes<-rma(yi,vi, data=subset(d2_phylum,TR=="Firmicutes"), method="REML")
+rMyxococcota<-rma(yi,vi, data=subset(d2_phylum,TR=="Myxococcota"), method="REML")
+rVerrucomicrobiota<-rma(yi,vi, data=subset(d2_phylum,TR=="Verrucomicrobiota"), method="REML")
+rGemmatimonadota<-rma(yi,vi, data=subset(d2_phylum,TR=="Gemmatimonadota"), method="REML")
+rMethylomirabilota<-rma(yi,vi, data=subset(d2_phylum,TR=="Methylomirabilota"), method="REML")
+rBacteroidota<-rma(yi,vi, data=subset(d2_phylum,TR=="Bacteroidota"), method="REML")
+rCyanobacteria<-rma(yi,vi, data=subset(d2_phylum,TR=="Cyanobacteria"), method="REML")
+rArmatimonadota<-rma(yi,vi, data=subset(d2_phylum,TR=="Armatimonadota"), method="REML")
+rNitrospirota<-rma(yi,vi, data=subset(d2_phylum,TR=="Nitrospirota"), method="REML")
+rLatescibacterota<-rma(yi,vi, data=subset(d2_phylum,TR=="Latescibacterota"), method="REML")
+rDesulfobacterota<-rma(yi,vi, data=subset(d2_phylum,TR=="Desulfobacterota"), method="REML")
+rRCP2_54<-rma(yi,vi, data=subset(d2_phylum,TR=="RCP2-54"), method="REML")
+rMBNT15<-rma(yi,vi, data=subset(d2_phylum,TR=="MBNT15"), method="REML")
+rWPS<-rma(yi,vi, data=subset(d2_phylum,TR=="WPS-2"), method="REML")
+rBdellovibrionota<-rma(yi,vi, data=subset(d2_phylum,TR=="Bdellovibrionota"), method="REML")
+
+summary(rActinobacteriota)
+summary(rProteobacteria)
+summary(rAcidobacteriota)
+summary(rPlanctomycetota)
+summary(rChloroflexi)
+summary(rFirmicutes)
+summary(rMyxococcota)
+summary(rVerrucomicrobiota)
+summary(rGemmatimonadota)
+summary(rMethylomirabilota)
+summary(rBacteroidota)
+summary(rCyanobacteria)
+summary(rArmatimonadota)
+summary(rNitrospirota)
+summary(rLatescibacterota)
+summary(rDesulfobacterota)
+summary(rRCP2_54)
+summary(rMBNT15)
+summary(rWPS)
+summary(rBdellovibrionota)
+
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "Actinobacteriota", "Proteobacteria", "Acidobacteriota", 
+  "Planctomycetota", "Chloroflexi", "Firmicutes", 
+  "Myxococcota", "Verrucomicrobiota", "Gemmatimonadota", "Methylomirabilota", 
+  "Bacteroidota", "Cyanobacteria", "Armatimonadota", 
+  "Nitrospirota",  "Latescibacterota","Desulfobacterota","RCP2-54" ,"MBNT15","WPS-2" , "Bdellovibrionota" 
+)
+# 将所有模型存储为列表
+modelsd2_phylum <- list(
+  rActinobacteriota, rProteobacteria, rAcidobacteriota, 
+  rPlanctomycetota, rChloroflexi, rFirmicutes,
+  rMyxococcota, rVerrucomicrobiota, rGemmatimonadota, rMethylomirabilota, 
+  rBacteroidota, rCyanobacteria, rArmatimonadota, 
+  rNitrospirota,  rLatescibacterota,rDesulfobacterota,rRCP2_54,rMBNT15,rWPS,rBdellovibrionota
+)
+
+
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+library(broom)
+results_urban2_phylum <- lapply(1:length(modelsd2_phylum), function(i) {
+  tidy(modelsd2_phylum[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+# 将所有模型的结果合并为一个数据框
+urban_resultsd2_phylum <- bind_rows(results_urban2_phylum, .id = "Model")
+
+urban_resultsd2_phylum <-urban_resultsd2_phylum [,c(4,5,7,8)]
+colnames(urban_resultsd2_phylum)[4]<-"index"
+colnames(urban_resultsd2_phylum)[1]<-"Estimate"
+colnames(urban_resultsd2_phylum)[2]<-"SE"
+colnames(urban_resultsd2_phylum)[3]<-"p"
+urban2_phylum<-urban_resultsd2_phylum
+urban2_phylum$significant <- ifelse(urban2_phylum$p <= 0.001, "***",
+                                    ifelse(urban2_phylum$p <= 0.01, "**",
+                                           ifelse(urban2_phylum$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+urban2_phylum$index <- reorder(urban2_phylum$index, abs(urban2_phylum$Estimate))
+
+
+
+##arg
+arg<-read.csv("/Users/yangy/Documents/E/city/metagenome/arg/results/normalized_type_percell.csv",sep=",",header=T,row.names=1)
+arg$sum <- rowSums(arg)
+
+arg <- arg[order(arg$sum, decreasing = TRUE), ]
+arg<-arg[,-109]
+arg<-t(arg)
+arg<-as.data.frame(arg)
+group<-read.csv("/Users/yangy/Documents/E/city/metagenome/group.csv",sep=",",header=T,row.names=1)
+group <- group[order(rownames(group)),]
+arg <- arg[order(rownames(arg)),]
+
+identical(rownames(group), rownames(arg))
+
+
+arg$group<-group$group
+arg$Location<-group$Location
+
+treatment_data_arg <- arg[arg$group == "Cropland",]
+control_data_arg <- arg[arg$group == "Forest",]
+urban_data_arg<-arg[arg$group == "Urban",]
+industry_data_arg<-arg[arg$group == "Industry",]
+
+
+treatment_data_arg <- treatment_data_arg %>%
+  mutate(across(1:28, ~ parse_number(as.character(.))))
+
+
+control_data_arg <- control_data_arg %>%
+  mutate(across(1:28, ~ parse_number(as.character(.))))
+
+industry_data_arg <- industry_data_arg %>%
+  mutate(across(1:28, ~ parse_number(as.character(.))))
+
+
+urban_data_arg <- urban_data_arg %>%
+  mutate(across(1:28, ~ parse_number(as.character(.))))
+
+summary_data_cropland_arg <- treatment_data_arg %>%
+  group_by(group) %>%
+  summarise(
+    across(1:28,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_forest_arg <- control_data_arg %>%
+  group_by(group) %>%
+  summarise(
+    across(1:28,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_urban_arg <- urban_data_arg %>%
+  group_by(group) %>%
+  summarise(
+    across(1:28,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_industry_arg <- industry_data_arg %>%
+  group_by(group) %>%
+  summarise(
+    across(1:28,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+
+
+##生成df_cropland
+summary_data_cropland1_arg<-melt(summary_data_cropland_arg)
+
+
+data_arg<-summary_data_cropland1_arg
+result_arg <- data.frame(Factor = character(),
+                         Type = character(),
+                         Value = numeric(),
+                         stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_arg)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_arg$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_arg$variable[i])) {
+    result_arg <- rbind(result_arg, data.frame(Factor = factor_name, Type = "mean", Value = data_arg$value[i]))
+  } else if (grepl("_sd", data_arg$variable[i])) {
+    result_arg <- rbind(result_arg, data.frame(Factor = factor_name, Type = "sd", Value = data_arg$value[i]))
+  }
+}
+
+head(result_arg)
+
+result_sd_arg <- result_arg %>%
+  filter(Type == "sd")
+result_mean_arg<- result_arg %>%
+  filter(Type == "mean")
+colnames(result_sd_arg)[3]<-"SD"
+colnames(result_mean_arg)[3]<-"Mean"
+cropland_arg <- cbind(result_mean_arg, result_sd_arg)
+
+colnames(cropland_arg)[1]<-"TR"
+colnames(cropland_arg)[3]<-"TM"
+colnames(cropland_arg)[6]<-"TSD"
+cropland_arg<-cropland_arg[,-c(2,4,5)]
+cropland_arg$TN<-"27"
+
+
+
+##生成df_industry
+summary_data_industry1_arg<-melt(summary_data_industry_arg)
+data_arg<-summary_data_industry1_arg
+result_arg <- data.frame(Factor = character(),
+                         Type = character(),
+                         Value = numeric(),
+                         stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_arg)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_arg$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_arg$variable[i])) {
+    result_arg <- rbind(result_arg, data.frame(Factor = factor_name, Type = "mean", Value = data_arg$value[i]))
+  } else if (grepl("_sd", data_arg$variable[i])) {
+    result_arg <- rbind(result_arg, data.frame(Factor = factor_name, Type = "sd", Value = data_arg$value[i]))
+  }
+}
+
+head(result_arg)
+
+
+result_sd_arg <- result_arg %>%
+  filter(Type == "sd")
+result_mean_arg<- result_arg %>%
+  filter(Type == "mean")
+colnames(result_sd_arg)[3]<-"SD"
+colnames(result_mean_arg)[3]<-"Mean"
+
+industry_arg <- cbind(result_mean_arg, result_sd_arg)
+
+
+colnames(industry_arg)[1]<-"TR"
+colnames(industry_arg)[3]<-"TM"
+colnames(industry_arg)[6]<-"TSD"
+industry_arg<-industry_arg[,-c(2,4,5)]
+industry_arg$TN<-"27"
+
+##生成df_urban
+summary_data_urban1_arg<-melt(summary_data_urban_arg)
+data_arg<-summary_data_urban1_arg
+result_arg <- data.frame(Factor = character(),
+                         Type = character(),
+                         Value = numeric(),
+                         stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_arg)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_arg$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_arg$variable[i])) {
+    result_arg <- rbind(result_arg, data.frame(Factor = factor_name, Type = "mean", Value = data_arg$value[i]))
+  } else if (grepl("_sd", data_arg$variable[i])) {
+    result_arg <- rbind(result_arg, data.frame(Factor = factor_name, Type = "sd", Value = data_arg$value[i]))
+  }
+}
+
+head(result_arg)
+
+result_sd_arg <- result_arg %>%
+  filter(Type == "sd")
+result_mean_arg<- result_arg %>%
+  filter(Type == "mean")
+colnames(result_sd_arg)[3]<-"SD"
+colnames(result_mean_arg)[3]<-"Mean"
+
+urban_arg <- cbind(result_mean_arg, result_sd_arg)
+
+colnames(urban_arg)[1]<-"TR"
+colnames(urban_arg)[3]<-"TM"
+colnames(urban_arg)[6]<-"TSD"
+urban_arg<-urban_arg[,-c(2,4,5)]
+urban_arg$TN<-"27"
+
+
+
+##生成df_forest
+summary_data_forest1_arg<-melt(summary_data_forest_arg)
+
+
+data_arg<-summary_data_forest1_arg
+result_arg <- data.frame(Factor = character(),
+                         Type = character(),
+                         Value = numeric(),
+                         stringsAsFactors = FALSE)
+
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_arg)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_arg$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_arg$variable[i])) {
+    result_arg <- rbind(result_arg, data.frame(Factor = factor_name, Type = "mean", Value = data_arg$value[i]))
+  } else if (grepl("_sd", data_arg$variable[i])) {
+    result_arg <- rbind(result_arg, data.frame(Factor = factor_name, Type = "sd", Value = data_arg$value[i]))
+  }
+}
+
+
+head(result_arg)
+
+result_sd_arg <- result_arg %>%
+  filter(Type == "sd")
+result_mean_arg<- result_arg %>%
+  filter(Type == "mean")
+colnames(result_sd_arg)[3]<-"SD"
+colnames(result_mean_arg)[3]<-"Mean"
+
+forest_arg <- cbind(result_mean_arg, result_sd_arg)
+
+colnames(forest_arg)[1]<-"TR"
+colnames(forest_arg)[3]<-"CM"
+colnames(forest_arg)[6]<-"SCD"
+forest_arg<-forest_arg[,-c(2,4,5)]
+forest_arg$CN<-"27"
+
+
+df_cropland_arg<-cbind(cropland_arg,forest_arg)
+df_cropland_arg<-df_cropland_arg[,-5]
+df_urban_arg<-cbind(urban_arg,forest_arg)
+df_urban_arg<-df_urban_arg[,-5]
+df_industry_arg<-cbind(industry_arg,forest_arg)
+df_industry_arg<-df_industry_arg[,-5]
+
+##计算cropland的效应值
+df_cropland_arg$TN <- as.numeric(df_cropland_arg$TN)
+df_cropland_arg$CN <- as.numeric(df_cropland_arg$CN)
+d2_arg<-escalc(measure="ROM",data=df_cropland_arg,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_arg <- na.omit(d2_arg)
+head(d2_arg)
+
+r1_arg<-rma(yi,vi, data=d2_arg, method="REML")
+summary(r1_arg)
+
+library(metafor)
+
+
+rMultidrug <- rma(yi, vi, data=subset(d2_arg, TR=="Multidrug"), method="REML")
+rRifamycin <- rma(yi, vi, data=subset(d2_arg, TR=="Rifamycin"), method="REML")
+rBacitracin <- rma(yi, vi, data=subset(d2_arg, TR=="Bacitracin"), method="REML")
+rNovobiocin <- rma(yi, vi, data=subset(d2_arg, TR=="Novobiocin"), method="REML")
+rPolymyxin <- rma(yi, vi, data=subset(d2_arg, TR=="Polymyxin"), method="REML")
+rTetracycline <- rma(yi, vi, data=subset(d2_arg, TR=="Tetracycline"), method="REML")
+rBeta_lactam <- rma(yi, vi, data=subset(d2_arg, TR=="Beta_lactam"), method="REML")
+rVancomycin <- rma(yi, vi, data=subset(d2_arg, TR=="Vancomycin"), method="REML")
+rMacrolide_lincosamide_streptogramin <- rma(yi, vi, data=subset(d2_arg, TR=="Macrolide-lincosamide-streptogramin"), method="REML")
+rAminoglycoside <- rma(yi, vi, data=subset(d2_arg, TR=="Aminoglycoside"), method="REML")
+rMupirocin <- rma(yi, vi, data=subset(d2_arg, TR=="Mupirocin"), method="REML")
+rSulfonamide <- rma(yi, vi, data=subset(d2_arg, TR=="Sulfonamide"), method="REML")
+rQuinolone <- rma(yi, vi, data=subset(d2_arg, TR=="Quinolone"), method="REML")
+rChloramphenicol <- rma(yi, vi, data=subset(d2_arg, TR=="Chloramphenicol"), method="REML")
+rTrimethoprim <- rma(yi, vi, data=subset(d2_arg, TR=="Trimethoprim"), method="REML")
+rTetracenomycin_C <- rma(yi, vi, data=subset(d2_arg, TR=="Tetracenomycin_C"), method="REML")
+rFlorfenicol <- rma(yi, vi, data=subset(d2_arg, TR=="Florfenicol"), method="REML")
+rFosfomycin <- rma(yi, vi, data=subset(d2_arg, TR=="Fosfomycin"), method="REML")
+rPleuromutilin_tiamulin <- rma(yi, vi, data=subset(d2_arg, TR=="Pleuromutilin_tiamulin"), method="REML")
+rOther_peptide_antibiotics <- rma(yi, vi, data=subset(d2_arg, TR=="Other_peptide_antibiotics"), method="REML")
+rBleomycin <- rma(yi, vi, data=subset(d2_arg, TR=="Bleomycin"), method="REML")
+rPuromycin <- rma(yi, vi, data=subset(d2_arg, TR=="Puromycin"), method="REML")
+rAntibacterial_fatty_acid <- rma(yi, vi, data=subset(d2_arg, TR=="Antibacterial_fatty_acid"), method="REML")
+rStreptothricin <- rma(yi, vi, data=subset(d2_arg, TR=="Streptothricin"), method="REML")
+rDefensin <- rma(yi, vi, data=subset(d2_arg, TR=="Defensin"), method="REML")
+rFactumycin <- rma(yi, vi, data=subset(d2_arg, TR=="Factumycin"), method="REML")
+
+summary(rMultidrug)
+summary(rRifamycin)
+summary(rBacitracin)
+summary(rNovobiocin)
+summary(rPolymyxin)
+summary(rTetracycline)
+summary(rBeta_lactam)
+summary(rVancomycin)
+summary(rMacrolide_lincosamide_streptogramin)
+summary(rAminoglycoside)
+summary(rMupirocin)
+summary(rSulfonamide)
+summary(rQuinolone)
+summary(rChloramphenicol)
+summary(rTrimethoprim)
+summary(rTetracenomycin_C)
+summary(rFlorfenicol)
+summary(rFosfomycin)
+summary(rPleuromutilin_tiamulin)
+summary(rOther_peptide_antibiotics)
+summary(rBleomycin)
+summary(rPuromycin)
+summary(rAntibacterial_fatty_acid)
+summary(rStreptothricin)
+summary(rDefensin)
+summary(rFactumycin)
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "Multidrug","Rifamycin","Bacitracin","Novobiocin","Polymyxin","Tetracycline",
+  "Beta_lactam","Vancomycin","Macrolide-lincosamide-streptogramin","Aminoglycoside",
+  "Mupirocin","Sulfonamide","Quinolone","Chloramphenicol","Trimethoprim",
+  "Tetracenomycin_C","Florfenicol","Fosfomycin","Pleuromutilin_tiamulin",
+  "Other_peptide_antibiotics","Bleomycin","Puromycin","Antibacterial_fatty_acid",
+  "Streptothricin","Defensin","Factumycin"
+)
+
+
+# 将所有模型存储为列表
+modelsd2_arg <- list(
+  rMultidrug, rRifamycin, rBacitracin, 
+  rNovobiocin, rPolymyxin, rTetracycline,
+  rBeta_lactam, rVancomycin, rMacrolide_lincosamide_streptogramin, rAminoglycoside, 
+  rMupirocin, rSulfonamide, rQuinolone, rChloramphenicol,rTrimethoprim,rTetracenomycin_C,rFlorfenicol,rFosfomycin,rPleuromutilin_tiamulin,
+  rOther_peptide_antibiotics,rBleomycin,rPuromycin,rAntibacterial_fatty_acid,rStreptothricin,rDefensin,rFactumycin)
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+
+results_cropland2_arg <- lapply(1:length(modelsd2_arg), function(i) {
+  tidy(modelsd2_arg[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+# 将所有模型的结果合并为一个数据框
+cropland_resultsd2_arg <- bind_rows(results_cropland2_arg, .id = "Model")
+
+cropland_resultsd2_arg <-cropland_resultsd2_arg [,c(4,5,7,8)]
+colnames(cropland_resultsd2_arg)[4]<-"index"
+colnames(cropland_resultsd2_arg)[1]<-"Estimate"
+colnames(cropland_resultsd2_arg)[2]<-"SE"
+colnames(cropland_resultsd2_arg)[3]<-"p"
+cropland2_arg<-cropland_resultsd2_arg
+
+cropland2_arg$significant <- ifelse(cropland2_arg$p <= 0.001, "***",
+                                    ifelse(cropland2_arg$p <= 0.01, "**",
+                                           ifelse(cropland2_arg$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+cropland2_arg$index <- reorder(cropland2_arg$index, abs(cropland2_arg$Estimate))
+
+##计算industry的效应值
+df_industry_arg$TN <- as.numeric(df_industry_arg$TN)
+df_industry_arg$CN <- as.numeric(df_industry_arg$CN)
+d2_arg<-escalc(measure="ROM",data=df_industry_arg,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_arg <- na.omit(d2_arg)
+head(d2_arg)
+
+r1_arg<-rma(yi,vi, data=d2_arg, method="REML")
+summary(r1_arg)
+
+library(metafor)
+
+
+rMultidrug <- rma(yi, vi, data=subset(d2_arg, TR=="Multidrug"), method="REML")
+rRifamycin <- rma(yi, vi, data=subset(d2_arg, TR=="Rifamycin"), method="REML")
+rBacitracin <- rma(yi, vi, data=subset(d2_arg, TR=="Bacitracin"), method="REML")
+rNovobiocin <- rma(yi, vi, data=subset(d2_arg, TR=="Novobiocin"), method="REML")
+rPolymyxin <- rma(yi, vi, data=subset(d2_arg, TR=="Polymyxin"), method="REML")
+rTetracycline <- rma(yi, vi, data=subset(d2_arg, TR=="Tetracycline"), method="REML")
+rBeta_lactam <- rma(yi, vi, data=subset(d2_arg, TR=="Beta_lactam"), method="REML")
+rVancomycin <- rma(yi, vi, data=subset(d2_arg, TR=="Vancomycin"), method="REML")
+rMacrolide_lincosamide_streptogramin <- rma(yi, vi, data=subset(d2_arg, TR=="Macrolide-lincosamide-streptogramin"), method="REML")
+rAminoglycoside <- rma(yi, vi, data=subset(d2_arg, TR=="Aminoglycoside"), method="REML")
+rMupirocin <- rma(yi, vi, data=subset(d2_arg, TR=="Mupirocin"), method="REML")
+rSulfonamide <- rma(yi, vi, data=subset(d2_arg, TR=="Sulfonamide"), method="REML")
+rQuinolone <- rma(yi, vi, data=subset(d2_arg, TR=="Quinolone"), method="REML")
+rChloramphenicol <- rma(yi, vi, data=subset(d2_arg, TR=="Chloramphenicol"), method="REML")
+rTrimethoprim <- rma(yi, vi, data=subset(d2_arg, TR=="Trimethoprim"), method="REML")
+rTetracenomycin_C <- rma(yi, vi, data=subset(d2_arg, TR=="Tetracenomycin_C"), method="REML")
+rFlorfenicol <- rma(yi, vi, data=subset(d2_arg, TR=="Florfenicol"), method="REML")
+rFosfomycin <- rma(yi, vi, data=subset(d2_arg, TR=="Fosfomycin"), method="REML")
+rPleuromutilin_tiamulin <- rma(yi, vi, data=subset(d2_arg, TR=="Pleuromutilin_tiamulin"), method="REML")
+rOther_peptide_antibiotics <- rma(yi, vi, data=subset(d2_arg, TR=="Other_peptide_antibiotics"), method="REML")
+rBleomycin <- rma(yi, vi, data=subset(d2_arg, TR=="Bleomycin"), method="REML")
+rPuromycin <- rma(yi, vi, data=subset(d2_arg, TR=="Puromycin"), method="REML")
+rAntibacterial_fatty_acid <- rma(yi, vi, data=subset(d2_arg, TR=="Antibacterial_fatty_acid"), method="REML")
+rStreptothricin <- rma(yi, vi, data=subset(d2_arg, TR=="Streptothricin"), method="REML")
+rDefensin <- rma(yi, vi, data=subset(d2_arg, TR=="Defensin"), method="REML")
+rFactumycin <- rma(yi, vi, data=subset(d2_arg, TR=="Factumycin"), method="REML")
+
+summary(rMultidrug)
+summary(rRifamycin)
+summary(rBacitracin)
+summary(rNovobiocin)
+summary(rPolymyxin)
+summary(rTetracycline)
+summary(rBeta_lactam)
+summary(rVancomycin)
+summary(rMacrolide_lincosamide_streptogramin)
+summary(rAminoglycoside)
+summary(rMupirocin)
+summary(rSulfonamide)
+summary(rQuinolone)
+summary(rChloramphenicol)
+summary(rTrimethoprim)
+summary(rTetracenomycin_C)
+summary(rFlorfenicol)
+summary(rFosfomycin)
+summary(rPleuromutilin_tiamulin)
+summary(rOther_peptide_antibiotics)
+summary(rBleomycin)
+summary(rPuromycin)
+summary(rAntibacterial_fatty_acid)
+summary(rStreptothricin)
+summary(rDefensin)
+summary(rFactumycin)
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "Multidrug","Rifamycin","Bacitracin","Novobiocin","Polymyxin","Tetracycline",
+  "Beta_lactam","Vancomycin","Macrolide-lincosamide-streptogramin","Aminoglycoside",
+  "Mupirocin","Sulfonamide","Quinolone","Chloramphenicol","Trimethoprim",
+  "Tetracenomycin_C","Florfenicol","Fosfomycin","Pleuromutilin_tiamulin",
+  "Other_peptide_antibiotics","Bleomycin","Puromycin","Antibacterial_fatty_acid",
+  "Streptothricin","Defensin","Factumycin"
+)
+
+
+# 将所有模型存储为列表
+modelsd2_arg <- list(
+  rMultidrug, rRifamycin, rBacitracin, 
+  rNovobiocin, rPolymyxin, rTetracycline,
+  rBeta_lactam, rVancomycin, rMacrolide_lincosamide_streptogramin, rAminoglycoside, 
+  rMupirocin, rSulfonamide, rQuinolone, rChloramphenicol,rTrimethoprim,rTetracenomycin_C,rFlorfenicol,rFosfomycin,rPleuromutilin_tiamulin,
+  rOther_peptide_antibiotics,rBleomycin,rPuromycin,rAntibacterial_fatty_acid,rStreptothricin,rDefensin,rFactumycin)
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+
+results_industry2_arg <- lapply(1:length(modelsd2_arg), function(i) {
+  tidy(modelsd2_arg[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+# 将所有模型的结果合并为一个数据框
+industry_resultsd2_arg <- bind_rows(results_industry2_arg, .id = "Model")
+
+industry_resultsd2_arg <-industry_resultsd2_arg [,c(4,5,7,8)]
+colnames(industry_resultsd2_arg)[4]<-"index"
+colnames(industry_resultsd2_arg)[1]<-"Estimate"
+colnames(industry_resultsd2_arg)[2]<-"SE"
+colnames(industry_resultsd2_arg)[3]<-"p"
+industry2_arg<-industry_resultsd2_arg
+
+industry2_arg$significant <- ifelse(industry2_arg$p <= 0.001, "***",
+                                    ifelse(industry2_arg$p <= 0.01, "**",
+                                           ifelse(industry2_arg$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+industry2_arg$index <- reorder(industry2_arg$index, abs(industry2_arg$Estimate))
+
+
+##计算urban的效应值
+df_urban_arg$TN <- as.numeric(df_urban_arg$TN)
+df_urban_arg$CN <- as.numeric(df_urban_arg$CN)
+d2_arg<-escalc(measure="ROM",data=df_urban_arg,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_arg <- na.omit(d2_arg)
+head(d2_arg)
+
+r1_arg<-rma(yi,vi, data=d2_arg, method="REML")
+summary(r1_arg)
+
+library(metafor)
+
+
+rMultidrug <- rma(yi, vi, data=subset(d2_arg, TR=="Multidrug"), method="REML")
+rRifamycin <- rma(yi, vi, data=subset(d2_arg, TR=="Rifamycin"), method="REML")
+rBacitracin <- rma(yi, vi, data=subset(d2_arg, TR=="Bacitracin"), method="REML")
+rNovobiocin <- rma(yi, vi, data=subset(d2_arg, TR=="Novobiocin"), method="REML")
+rPolymyxin <- rma(yi, vi, data=subset(d2_arg, TR=="Polymyxin"), method="REML")
+rTetracycline <- rma(yi, vi, data=subset(d2_arg, TR=="Tetracycline"), method="REML")
+rBeta_lactam <- rma(yi, vi, data=subset(d2_arg, TR=="Beta_lactam"), method="REML")
+rVancomycin <- rma(yi, vi, data=subset(d2_arg, TR=="Vancomycin"), method="REML")
+rMacrolide_lincosamide_streptogramin <- rma(yi, vi, data=subset(d2_arg, TR=="Macrolide-lincosamide-streptogramin"), method="REML")
+rAminoglycoside <- rma(yi, vi, data=subset(d2_arg, TR=="Aminoglycoside"), method="REML")
+rMupirocin <- rma(yi, vi, data=subset(d2_arg, TR=="Mupirocin"), method="REML")
+rSulfonamide <- rma(yi, vi, data=subset(d2_arg, TR=="Sulfonamide"), method="REML")
+rQuinolone <- rma(yi, vi, data=subset(d2_arg, TR=="Quinolone"), method="REML")
+rChloramphenicol <- rma(yi, vi, data=subset(d2_arg, TR=="Chloramphenicol"), method="REML")
+rTrimethoprim <- rma(yi, vi, data=subset(d2_arg, TR=="Trimethoprim"), method="REML")
+rTetracenomycin_C <- rma(yi, vi, data=subset(d2_arg, TR=="Tetracenomycin_C"), method="REML")
+rFlorfenicol <- rma(yi, vi, data=subset(d2_arg, TR=="Florfenicol"), method="REML")
+rFosfomycin <- rma(yi, vi, data=subset(d2_arg, TR=="Fosfomycin"), method="REML")
+rPleuromutilin_tiamulin <- rma(yi, vi, data=subset(d2_arg, TR=="Pleuromutilin_tiamulin"), method="REML")
+rOther_peptide_antibiotics <- rma(yi, vi, data=subset(d2_arg, TR=="Other_peptide_antibiotics"), method="REML")
+rBleomycin <- rma(yi, vi, data=subset(d2_arg, TR=="Bleomycin"), method="REML")
+rPuromycin <- rma(yi, vi, data=subset(d2_arg, TR=="Puromycin"), method="REML")
+rAntibacterial_fatty_acid <- rma(yi, vi, data=subset(d2_arg, TR=="Antibacterial_fatty_acid"), method="REML")
+rStreptothricin <- rma(yi, vi, data=subset(d2_arg, TR=="Streptothricin"), method="REML")
+rDefensin <- rma(yi, vi, data=subset(d2_arg, TR=="Defensin"), method="REML")
+rFactumycin <- rma(yi, vi, data=subset(d2_arg, TR=="Factumycin"), method="REML")
+
+summary(rMultidrug)
+summary(rRifamycin)
+summary(rBacitracin)
+summary(rNovobiocin)
+summary(rPolymyxin)
+summary(rTetracycline)
+summary(rBeta_lactam)
+summary(rVancomycin)
+summary(rMacrolide_lincosamide_streptogramin)
+summary(rAminoglycoside)
+summary(rMupirocin)
+summary(rSulfonamide)
+summary(rQuinolone)
+summary(rChloramphenicol)
+summary(rTrimethoprim)
+summary(rTetracenomycin_C)
+summary(rFlorfenicol)
+summary(rFosfomycin)
+summary(rPleuromutilin_tiamulin)
+summary(rOther_peptide_antibiotics)
+summary(rBleomycin)
+summary(rPuromycin)
+summary(rAntibacterial_fatty_acid)
+summary(rStreptothricin)
+summary(rDefensin)
+summary(rFactumycin)
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "Multidrug","Rifamycin","Bacitracin","Novobiocin","Polymyxin","Tetracycline",
+  "Beta_lactam","Vancomycin","Macrolide-lincosamide-streptogramin","Aminoglycoside",
+  "Mupirocin","Sulfonamide","Quinolone","Chloramphenicol","Trimethoprim",
+  "Tetracenomycin_C","Florfenicol","Fosfomycin","Pleuromutilin_tiamulin",
+  "Other_peptide_antibiotics","Bleomycin","Puromycin","Antibacterial_fatty_acid",
+  "Streptothricin","Defensin","Factumycin"
+)
+
+
+# 将所有模型存储为列表
+modelsd2_arg <- list(
+  rMultidrug, rRifamycin, rBacitracin, 
+  rNovobiocin, rPolymyxin, rTetracycline,
+  rBeta_lactam, rVancomycin, rMacrolide_lincosamide_streptogramin, rAminoglycoside, 
+  rMupirocin, rSulfonamide, rQuinolone, rChloramphenicol,rTrimethoprim,rTetracenomycin_C,rFlorfenicol,rFosfomycin,rPleuromutilin_tiamulin,
+  rOther_peptide_antibiotics,rBleomycin,rPuromycin,rAntibacterial_fatty_acid,rStreptothricin,rDefensin,rFactumycin)
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+
+results_urban2_arg <- lapply(1:length(modelsd2_arg), function(i) {
+  tidy(modelsd2_arg[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+# 将所有模型的结果合并为一个数据框
+urban_resultsd2_arg <- bind_rows(results_urban2_arg, .id = "Model")
+
+urban_resultsd2_arg <-urban_resultsd2_arg [,c(4,5,7,8)]
+colnames(urban_resultsd2_arg)[4]<-"index"
+colnames(urban_resultsd2_arg)[1]<-"Estimate"
+colnames(urban_resultsd2_arg)[2]<-"SE"
+colnames(urban_resultsd2_arg)[3]<-"p"
+urban2_arg<-urban_resultsd2_arg
+
+urban2_arg$significant <- ifelse(urban2_arg$p <= 0.001, "***",
+                                 ifelse(urban2_arg$p <= 0.01, "**",
+                                        ifelse(urban2_arg$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+urban2_arg$index <- reorder(urban2_arg$index, abs(urban2_arg$Estimate))
+
+##high risk arg
+high<-read.csv("/Users/yangy/Documents/E/city/metagenome/arg/results/high_risk_arg.csv", row.names = 1, check.names = F, header = T)
+sample_cols <- 2:ncol(high)
+
+type_sum <- high %>%
+  dplyr::group_by(Type) %>%
+  dplyr::summarise(across(all_of(names(high)[sample_cols]), sum))
+high<-type_sum
+high<-as.data.frame(high)
+row.names(high)<-high$Type
+high<-high[,-1]
+high$sum <- rowSums(high)
+rownames(high) <- gsub("Forfenicol", "Florfenicol", rownames(high))
+
+high <- high[order(high$sum, decreasing = TRUE), ]
+high<-high[,-109]
+high<-t(high)
+high<-as.data.frame(high)
+group<-read.csv("/Users/yangy/Documents/E/city/metagenome/group.csv",sep=",",header=T,row.names=1)
+group <- group[order(rownames(group)),]
+high <- high[order(rownames(high)),]
+
+identical(rownames(group), rownames(high))
+
+
+high$group<-group$group
+high$Location<-group$Location
+
+treatment_data_high <- high[high$group == "Cropland",]
+control_data_high <- high[high$group == "Forest",]
+urban_data_high<-high[high$group == "Urban",]
+industry_data_high<-high[high$group == "Industry",]
+
+
+treatment_data_high <- treatment_data_high %>%
+  mutate(across(1:9, ~ parse_number(as.character(.))))
+
+
+control_data_high <- control_data_high %>%
+  mutate(across(1:9, ~ parse_number(as.character(.))))
+
+industry_data_high <- industry_data_high %>%
+  mutate(across(1:9, ~ parse_number(as.character(.))))
+
+
+urban_data_high <- urban_data_high %>%
+  mutate(across(1:9, ~ parse_number(as.character(.))))
+
+summary_data_cropland_high <- treatment_data_high %>%
+  group_by(group) %>%
+  summarise(
+    across(1:9,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_forest_high <- control_data_high %>%
+  group_by(group) %>%
+  summarise(
+    across(1:9,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_urban_high <- urban_data_high %>%
+  group_by(group) %>%
+  summarise(
+    across(1:9,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_industry_high <- industry_data_high %>%
+  group_by(group) %>%
+  summarise(
+    across(1:9,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+
+
+##生成df_cropland
+summary_data_cropland1_high<-melt(summary_data_cropland_high)
+
+
+data_high<-summary_data_cropland1_high
+result_high <- data.frame(Factor = character(),
+                          Type = character(),
+                          Value = numeric(),
+                          stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_high)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_high$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_high$variable[i])) {
+    result_high <- rbind(result_high, data.frame(Factor = factor_name, Type = "mean", Value = data_high$value[i]))
+  } else if (grepl("_sd", data_high$variable[i])) {
+    result_high <- rbind(result_high, data.frame(Factor = factor_name, Type = "sd", Value = data_high$value[i]))
+  }
+}
+
+head(result_high)
+
+result_sd_high <- result_high %>%
+  filter(Type == "sd")
+result_mean_high<- result_high %>%
+  filter(Type == "mean")
+colnames(result_sd_high)[3]<-"SD"
+colnames(result_mean_high)[3]<-"Mean"
+cropland_high <- cbind(result_mean_high, result_sd_high)
+
+colnames(cropland_high)[1]<-"TR"
+colnames(cropland_high)[3]<-"TM"
+colnames(cropland_high)[6]<-"TSD"
+cropland_high<-cropland_high[,-c(2,4,5)]
+cropland_high$TN<-"27"
+
+
+
+##生成df_industry
+summary_data_industry1_high<-melt(summary_data_industry_high)
+data_high<-summary_data_industry1_high
+result_high <- data.frame(Factor = character(),
+                          Type = character(),
+                          Value = numeric(),
+                          stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_high)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_high$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_high$variable[i])) {
+    result_high <- rbind(result_high, data.frame(Factor = factor_name, Type = "mean", Value = data_high$value[i]))
+  } else if (grepl("_sd", data_high$variable[i])) {
+    result_high <- rbind(result_high, data.frame(Factor = factor_name, Type = "sd", Value = data_high$value[i]))
+  }
+}
+
+head(result_high)
+
+
+result_sd_high <- result_high %>%
+  filter(Type == "sd")
+result_mean_high<- result_high %>%
+  filter(Type == "mean")
+colnames(result_sd_high)[3]<-"SD"
+colnames(result_mean_high)[3]<-"Mean"
+
+industry_high <- cbind(result_mean_high, result_sd_high)
+
+
+colnames(industry_high)[1]<-"TR"
+colnames(industry_high)[3]<-"TM"
+colnames(industry_high)[6]<-"TSD"
+industry_high<-industry_high[,-c(2,4,5)]
+industry_high$TN<-"27"
+
+##生成df_urban
+summary_data_urban1_high<-melt(summary_data_urban_high)
+data_high<-summary_data_urban1_high
+result_high <- data.frame(Factor = character(),
+                          Type = character(),
+                          Value = numeric(),
+                          stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_high)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_high$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_high$variable[i])) {
+    result_high <- rbind(result_high, data.frame(Factor = factor_name, Type = "mean", Value = data_high$value[i]))
+  } else if (grepl("_sd", data_high$variable[i])) {
+    result_high <- rbind(result_high, data.frame(Factor = factor_name, Type = "sd", Value = data_high$value[i]))
+  }
+}
+
+head(result_high)
+
+result_sd_high <- result_high %>%
+  filter(Type == "sd")
+result_mean_high<- result_high %>%
+  filter(Type == "mean")
+colnames(result_sd_high)[3]<-"SD"
+colnames(result_mean_high)[3]<-"Mean"
+
+urban_high <- cbind(result_mean_high, result_sd_high)
+
+colnames(urban_high)[1]<-"TR"
+colnames(urban_high)[3]<-"TM"
+colnames(urban_high)[6]<-"TSD"
+urban_high<-urban_high[,-c(2,4,5)]
+urban_high$TN<-"27"
+
+
+
+##生成df_forest
+summary_data_forest1_high<-melt(summary_data_forest_high)
+
+
+data_high<-summary_data_forest1_high
+result_high <- data.frame(Factor = character(),
+                          Type = character(),
+                          Value = numeric(),
+                          stringsAsFactors = FALSE)
+
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_high)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_high$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_high$variable[i])) {
+    result_high <- rbind(result_high, data.frame(Factor = factor_name, Type = "mean", Value = data_high$value[i]))
+  } else if (grepl("_sd", data_high$variable[i])) {
+    result_high <- rbind(result_high, data.frame(Factor = factor_name, Type = "sd", Value = data_high$value[i]))
+  }
+}
+
+
+head(result_high)
+
+result_sd_high <- result_high %>%
+  filter(Type == "sd")
+result_mean_high<- result_high %>%
+  filter(Type == "mean")
+colnames(result_sd_high)[3]<-"SD"
+colnames(result_mean_high)[3]<-"Mean"
+
+forest_high <- cbind(result_mean_high, result_sd_high)
+
+colnames(forest_high)[1]<-"TR"
+colnames(forest_high)[3]<-"CM"
+colnames(forest_high)[6]<-"SCD"
+forest_high<-forest_high[,-c(2,4,5)]
+forest_high$CN<-"27"
+
+
+df_cropland_high<-cbind(cropland_high,forest_high)
+df_cropland_high<-df_cropland_high[,-5]
+df_urban_high<-cbind(urban_high,forest_high)
+df_urban_high<-df_urban_high[,-5]
+df_industry_high<-cbind(industry_high,forest_high)
+df_industry_high<-df_industry_high[,-5]
+
+##计算cropland的效应值
+df_cropland_high$TN <- as.numeric(df_cropland_high$TN)
+df_cropland_high$CN <- as.numeric(df_cropland_high$CN)
+d2_high<-escalc(measure="ROM",data=df_cropland_high,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_high <- na.omit(d2_high)
+head(d2_high)
+
+r1_high<-rma(yi,vi, data=d2_high, method="REML")
+summary(r1_high)
+
+library(metafor)
+rBacitracin <- rma(yi, vi, data=subset(d2_high, TR=="Bacitracin"), method="REML")
+rAminoglycoside <- rma(yi, vi, data=subset(d2_high, TR=="Aminoglycoside"), method="REML")
+rChloramphenicol <- rma(yi, vi, data=subset(d2_high, TR=="Chloramphenicol"), method="REML")
+rFlorfenicol <- rma(yi, vi, data=subset(d2_high, TR=="Florfenicol"), method="REML")
+rMultidrug <- rma(yi, vi, data=subset(d2_high, TR=="Multidrug"), method="REML")
+rTrimethoprim <- rma(yi, vi, data=subset(d2_high, TR=="Trimethoprim"), method="REML")
+rBeta_lactam <- rma(yi, vi, data=subset(d2_high, TR=="Beta_lactam"), method="REML")
+rVancomycin <- rma(yi, vi, data=subset(d2_high, TR=="Vancomycin"), method="REML")
+
+summary(rBacitracin)
+summary(rAminoglycoside)
+summary(rChloramphenicol)
+summary(rFlorfenicol)
+summary(rMultidrug)
+summary(rTrimethoprim)
+summary(rBeta_lactam)
+summary(rVancomycin)
+
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "Bacitracin","Aminoglycoside","Chloramphenicol","Florfenicol","Multidrug","Trimethoprim",
+  "Beta_lactam","Vancomycin"
+)
+
+
+# 将所有模型存储为列表
+modelsd2_high <- list(
+  rBacitracin, rAminoglycoside, rChloramphenicol, 
+  rFlorfenicol, rMultidrug, rTrimethoprim,
+  rBeta_lactam, rVancomycin)
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+
+results_cropland2_high <- lapply(1:length(modelsd2_high), function(i) {
+  tidy(modelsd2_high[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+# 将所有模型的结果合并为一个数据框
+cropland_resultsd2_high <- bind_rows(results_cropland2_high, .id = "Model")
+
+cropland_resultsd2_high <-cropland_resultsd2_high [,c(4,5,7,8)]
+colnames(cropland_resultsd2_high)[4]<-"index"
+colnames(cropland_resultsd2_high)[1]<-"Estimate"
+colnames(cropland_resultsd2_high)[2]<-"SE"
+colnames(cropland_resultsd2_high)[3]<-"p"
+cropland2_high<-cropland_resultsd2_high
+
+cropland2_high$significant <- ifelse(cropland2_high$p <= 0.001, "***",
+                                     ifelse(cropland2_high$p <= 0.01, "**",
+                                            ifelse(cropland2_high$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+cropland2_high$index <- reorder(cropland2_high$index, abs(cropland2_high$Estimate))
+
+##计算industry的效应值
+df_industry_high$TN <- as.numeric(df_industry_high$TN)
+df_industry_high$CN <- as.numeric(df_industry_high$CN)
+d2_high<-escalc(measure="ROM",data=df_industry_high,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_high <- na.omit(d2_high)
+head(d2_high)
+
+r1_high<-rma(yi,vi, data=d2_high, method="REML")
+summary(r1_high)
+
+library(metafor)
+
+
+rBacitracin <- rma(yi, vi, data=subset(d2_high, TR=="Bacitracin"), method="REML")
+rAminoglycoside <- rma(yi, vi, data=subset(d2_high, TR=="Aminoglycoside"), method="REML")
+rChloramphenicol <- rma(yi, vi, data=subset(d2_high, TR=="Chloramphenicol"), method="REML")
+rFlorfenicol <- rma(yi, vi, data=subset(d2_high, TR=="Florfenicol"), method="REML")
+rMultidrug <- rma(yi, vi, data=subset(d2_high, TR=="Multidrug"), method="REML")
+rTrimethoprim <- rma(yi, vi, data=subset(d2_high, TR=="Trimethoprim"), method="REML")
+rBeta_lactam <- rma(yi, vi, data=subset(d2_high, TR=="Beta_lactam"), method="REML")
+rVancomycin <- rma(yi, vi, data=subset(d2_high, TR=="Vancomycin"), method="REML")
+
+summary(rBacitracin)
+summary(rAminoglycoside)
+summary(rChloramphenicol)
+summary(rFlorfenicol)
+summary(rMultidrug)
+summary(rTrimethoprim)
+summary(rBeta_lactam)
+summary(rVancomycin)
+
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "Bacitracin","Aminoglycoside","Chloramphenicol","Florfenicol","Multidrug","Trimethoprim",
+  "Beta_lactam","Vancomycin"
+)
+
+
+# 将所有模型存储为列表
+modelsd2_high <- list(
+  rBacitracin, rAminoglycoside, rChloramphenicol, 
+  rFlorfenicol, rMultidrug, rTrimethoprim,
+  rBeta_lactam, rVancomycin)
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+
+results_industry2_high <- lapply(1:length(modelsd2_high), function(i) {
+  tidy(modelsd2_high[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+# 将所有模型的结果合并为一个数据框
+industry_resultsd2_high <- bind_rows(results_industry2_high, .id = "Model")
+
+industry_resultsd2_high <-industry_resultsd2_high [,c(4,5,7,8)]
+colnames(industry_resultsd2_high)[4]<-"index"
+colnames(industry_resultsd2_high)[1]<-"Estimate"
+colnames(industry_resultsd2_high)[2]<-"SE"
+colnames(industry_resultsd2_high)[3]<-"p"
+industry2_high<-industry_resultsd2_high
+
+industry2_high$significant <- ifelse(industry2_high$p <= 0.001, "***",
+                                     ifelse(industry2_high$p <= 0.01, "**",
+                                            ifelse(industry2_high$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+industry2_high$index <- reorder(industry2_high$index, abs(industry2_high$Estimate))
+
+
+##计算urban的效应值
+df_urban_high$TN <- as.numeric(df_urban_high$TN)
+df_urban_high$CN <- as.numeric(df_urban_high$CN)
+d2_high<-escalc(measure="ROM",data=df_urban_high,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_high <- na.omit(d2_high)
+head(d2_high)
+
+r1_high<-rma(yi,vi, data=d2_high, method="REML")
+summary(r1_high)
+
+library(metafor)
+
+
+rBacitracin <- rma(yi, vi, data=subset(d2_high, TR=="Bacitracin"), method="REML")
+rAminoglycoside <- rma(yi, vi, data=subset(d2_high, TR=="Aminoglycoside"), method="REML")
+rChloramphenicol <- rma(yi, vi, data=subset(d2_high, TR=="Chloramphenicol"), method="REML")
+rFlorfenicol <- rma(yi, vi, data=subset(d2_high, TR=="Florfenicol"), method="REML")
+rMultidrug <- rma(yi, vi, data=subset(d2_high, TR=="Multidrug"), method="REML")
+rTrimethoprim <- rma(yi, vi, data=subset(d2_high, TR=="Trimethoprim"), method="REML")
+rBeta_lactam <- rma(yi, vi, data=subset(d2_high, TR=="Beta_lactam"), method="REML")
+rVancomycin <- rma(yi, vi, data=subset(d2_high, TR=="Vancomycin"), method="REML")
+
+summary(rBacitracin)
+summary(rAminoglycoside)
+summary(rChloramphenicol)
+summary(rFlorfenicol)
+summary(rMultidrug)
+summary(rTrimethoprim)
+summary(rBeta_lactam)
+summary(rVancomycin)
+
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "Bacitracin","Aminoglycoside","Chloramphenicol","Florfenicol","Multidrug","Trimethoprim",
+  "Beta_lactam","Vancomycin"
+)
+
+
+# 将所有模型存储为列表
+modelsd2_high <- list(
+  rBacitracin, rAminoglycoside, rChloramphenicol, 
+  rFlorfenicol, rMultidrug, rTrimethoprim,
+  rBeta_lactam, rVancomycin)
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+
+results_urban2_high <- lapply(1:length(modelsd2_high), function(i) {
+  tidy(modelsd2_high[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+# 将所有模型的结果合并为一个数据框
+urban_resultsd2_high <- bind_rows(results_urban2_high, .id = "Model")
+
+urban_resultsd2_high <-urban_resultsd2_high [,c(4,5,7,8)]
+colnames(urban_resultsd2_high)[4]<-"index"
+colnames(urban_resultsd2_high)[1]<-"Estimate"
+colnames(urban_resultsd2_high)[2]<-"SE"
+colnames(urban_resultsd2_high)[3]<-"p"
+urban2_high<-urban_resultsd2_high
+
+urban2_high$significant <- ifelse(urban2_high$p <= 0.001, "***",
+                                  ifelse(urban2_high$p <= 0.01, "**",
+                                         ifelse(urban2_high$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+urban2_high$index <- reorder(urban2_high$index, abs(urban2_high$Estimate))
+
+
+##VFG
+vfg<-read.csv("/Users/yangy/Documents/E/city/metagenome/vfdb/results/normalized_level2.csv",sep=",",header=T,row.names=1)
+vfg<-t(vfg)
+vfg<-as.data.frame(vfg)
+group<-read.csv("/Users/yangy/Documents/E/city/metagenome/group.csv",sep=",",header=T,row.names=1)
+group <- group[order(rownames(group)),]
+
+vfg <- vfg[order(rownames(vfg)),]
+identical(rownames(group), rownames(vfg))
+
+
+vfg$group<-group$group
+vfg$Location<-group$Location
+
+treatment_data_vfg <- vfg[vfg$group == "Cropland",]
+control_data_vfg <- vfg[vfg$group == "Forest",]
+urban_data_vfg<-vfg[vfg$group == "Urban",]
+industry_data_vfg<-vfg[vfg$group == "Industry",]
+library(readr)
+
+
+treatment_data_vfg <- treatment_data_vfg %>%
+  mutate(across(1:14, ~ parse_number(as.character(.))))
+
+
+control_data_vfg <- control_data_vfg %>%
+  mutate(across(1:14, ~ parse_number(as.character(.))))
+
+industry_data_vfg <- industry_data_vfg %>%
+  mutate(across(1:14, ~ parse_number(as.character(.))))
+
+
+urban_data_vfg <- urban_data_vfg %>%
+  mutate(across(1:14, ~ parse_number(as.character(.))))
+
+summary_data_cropland_vfg <- treatment_data_vfg %>%
+  group_by(group) %>%
+  summarise(
+    across(1:14,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_forest_vfg <- control_data_vfg %>%
+  group_by(group) %>%
+  summarise(
+    across(1:14,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_urban_vfg <- urban_data_vfg %>%
+  group_by(group) %>%
+  summarise(
+    across(1:14,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_industry_vfg <- industry_data_vfg %>%
+  group_by(group) %>%
+  summarise(
+    across(1:14,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+##生成df_cropland
+summary_data_cropland1_vfg<-melt(summary_data_cropland_vfg)
+
+
+data_vfg<-summary_data_cropland1_vfg
+result_vfg <- data.frame(Factor = character(),
+                         Type = character(),
+                         Value = numeric(),
+                         stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_vfg)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_vfg$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_vfg$variable[i])) {
+    result_vfg <- rbind(result_vfg, data.frame(Factor = factor_name, Type = "mean", Value = data_vfg$value[i]))
+  } else if (grepl("_sd", data_vfg$variable[i])) {
+    result_vfg <- rbind(result_vfg, data.frame(Factor = factor_name, Type = "sd", Value = data_vfg$value[i]))
+  }
+}
+
+head(result_vfg)
+
+result_sd_vfg <- result_vfg %>%
+  filter(Type == "sd")
+result_mean_vfg<- result_vfg %>%
+  filter(Type == "mean")
+colnames(result_sd_vfg)[3]<-"SD"
+colnames(result_mean_vfg)[3]<-"Mean"
+cropland_vfg <- cbind(result_mean_vfg, result_sd_vfg)
+
+colnames(cropland_vfg)[1]<-"TR"
+colnames(cropland_vfg)[3]<-"TM"
+colnames(cropland_vfg)[6]<-"TSD"
+cropland_vfg<-cropland_vfg[,-c(2,4,5)]
+cropland_vfg$TN<-"27"
+
+
+
+##生成df_industry
+summary_data_industry1_vfg<-melt(summary_data_industry_vfg)
+data_vfg<-summary_data_industry1_vfg
+result_vfg <- data.frame(Factor = character(),
+                         Type = character(),
+                         Value = numeric(),
+                         stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_vfg)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_vfg$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_vfg$variable[i])) {
+    result_vfg <- rbind(result_vfg, data.frame(Factor = factor_name, Type = "mean", Value = data_vfg$value[i]))
+  } else if (grepl("_sd", data_vfg$variable[i])) {
+    result_vfg <- rbind(result_vfg, data.frame(Factor = factor_name, Type = "sd", Value = data_vfg$value[i]))
+  }
+}
+
+head(result_vfg)
+
+
+result_sd_vfg <- result_vfg %>%
+  filter(Type == "sd")
+result_mean_vfg<- result_vfg %>%
+  filter(Type == "mean")
+colnames(result_sd_vfg)[3]<-"SD"
+colnames(result_mean_vfg)[3]<-"Mean"
+
+industry_vfg <- cbind(result_mean_vfg, result_sd_vfg)
+
+
+colnames(industry_vfg)[1]<-"TR"
+colnames(industry_vfg)[3]<-"TM"
+colnames(industry_vfg)[6]<-"TSD"
+industry_vfg<-industry_vfg[,-c(2,4,5)]
+industry_vfg$TN<-"27"
+
+##生成df_urban
+summary_data_urban1_vfg<-melt(summary_data_urban_vfg)
+data_vfg<-summary_data_urban1_vfg
+result_vfg <- data.frame(Factor = character(),
+                         Type = character(),
+                         Value = numeric(),
+                         stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_vfg)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_vfg$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_vfg$variable[i])) {
+    result_vfg <- rbind(result_vfg, data.frame(Factor = factor_name, Type = "mean", Value = data_vfg$value[i]))
+  } else if (grepl("_sd", data_vfg$variable[i])) {
+    result_vfg <- rbind(result_vfg, data.frame(Factor = factor_name, Type = "sd", Value = data_vfg$value[i]))
+  }
+}
+
+head(result_vfg)
+
+result_sd_vfg <- result_vfg %>%
+  filter(Type == "sd")
+result_mean_vfg<- result_vfg %>%
+  filter(Type == "mean")
+colnames(result_sd_vfg)[3]<-"SD"
+colnames(result_mean_vfg)[3]<-"Mean"
+
+urban_vfg <- cbind(result_mean_vfg, result_sd_vfg)
+
+colnames(urban_vfg)[1]<-"TR"
+colnames(urban_vfg)[3]<-"TM"
+colnames(urban_vfg)[6]<-"TSD"
+urban_vfg<-urban_vfg[,-c(2,4,5)]
+urban_vfg$TN<-"27"
+
+
+
+##生成df_forest
+summary_data_forest1_vfg<-melt(summary_data_forest_vfg)
+
+
+data_vfg<-summary_data_forest1_vfg
+result_vfg <- data.frame(Factor = character(),
+                         Type = character(),
+                         Value = numeric(),
+                         stringsAsFactors = FALSE)
+
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_vfg)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_vfg$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_vfg$variable[i])) {
+    result_vfg <- rbind(result_vfg, data.frame(Factor = factor_name, Type = "mean", Value = data_vfg$value[i]))
+  } else if (grepl("_sd", data_vfg$variable[i])) {
+    result_vfg <- rbind(result_vfg, data.frame(Factor = factor_name, Type = "sd", Value = data_vfg$value[i]))
+  }
+}
+
+
+head(result_vfg)
+
+result_sd_vfg <- result_vfg %>%
+  filter(Type == "sd")
+result_mean_vfg<- result_vfg %>%
+  filter(Type == "mean")
+colnames(result_sd_vfg)[3]<-"SD"
+colnames(result_mean_vfg)[3]<-"Mean"
+
+forest_vfg <- cbind(result_mean_vfg, result_sd_vfg)
+
+colnames(forest_vfg)[1]<-"TR"
+colnames(forest_vfg)[3]<-"CM"
+colnames(forest_vfg)[6]<-"SCD"
+forest_vfg<-forest_vfg[,-c(2,4,5)]
+forest_vfg$CN<-"27"
+
+
+df_cropland_vfg<-cbind(cropland_vfg,forest_vfg)
+df_cropland_vfg<-df_cropland_vfg[,-5]
+df_urban_vfg<-cbind(urban_vfg,forest_vfg)
+df_urban_vfg<-df_urban_vfg[,-5]
+df_industry_vfg<-cbind(industry_vfg,forest_vfg)
+df_industry_vfg<-df_industry_vfg[,-5]
+
+##计算cropland的效应值
+library(metafor)
+df_cropland_vfg$TN <- as.numeric(df_cropland_vfg$TN)
+df_cropland_vfg$CN <- as.numeric(df_cropland_vfg$CN)
+d2_vfg<-escalc(measure="ROM",data=df_cropland_vfg,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_vfg <- na.omit(d2_vfg)
+head(d2_vfg)
+
+r1_vfg<-rma(yi,vi, data=d2_vfg, method="REML")
+summary(r1_vfg)
+
+rAdherence <- rma(yi, vi, data = subset(d2_vfg, TR == "Adherence"), method = "REML")
+
+rAntimicrobial_activity_Competitive_advantage <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Antimicrobial activity/Competitive advantage"),
+  method = "REML"
+)
+
+rBiofilm <- rma(yi, vi, data = subset(d2_vfg, TR == "Biofilm"), method = "REML")
+
+rEffector_delivery_system <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Effector delivery system"),
+  method = "REML"
+)
+
+rExoenzyme <- rma(yi, vi, data = subset(d2_vfg, TR == "Exoenzyme"), method = "REML")
+
+rExotoxin <- rma(yi, vi, data = subset(d2_vfg, TR == "Exotoxin"), method = "REML")
+
+rImmune_modulation <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Immune modulation"),
+  method = "REML"
+)
+
+rInvasion <- rma(yi, vi, data = subset(d2_vfg, TR == "Invasion"), method = "REML")
+
+rMotility <- rma(yi, vi, data = subset(d2_vfg, TR == "Motility"), method = "REML")
+
+rNutritional_Metabolic_factor <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Nutritional/Metabolic factor"),
+  method = "REML"
+)
+
+rOthers <- rma(yi, vi, data = subset(d2_vfg, TR == "Others"), method = "REML")
+
+rPost_translational_modification <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Post-translational modification"),
+  method = "REML"
+)
+
+rRegulation <- rma(yi, vi, data = subset(d2_vfg, TR == "Regulation"), method = "REML")
+
+rStress_survival <- rma(yi, vi, data = subset(d2_vfg, TR == "Stress survival"), method = "REML")
+
+summary(rAdherence)
+summary(rAntimicrobial_activity_Competitive_advantage)
+summary(rBiofilm)
+summary(rEffector_delivery_system)
+summary(rExoenzyme)
+summary(rExotoxin)
+summary(rImmune_modulation)
+summary(rInvasion)
+summary(rMotility)
+summary(rNutritional_Metabolic_factor)
+summary(rOthers)
+summary(rPost_translational_modification)
+summary(rRegulation)
+summary(rStress_survival)
+
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "Adherence",
+  "Antimicrobial activity/Competitive advantage",
+  "Biofilm",
+  "Effector delivery system",
+  "Exoenzyme",
+  "Exotoxin",
+  "Immune modulation",
+  "Invasion",
+  "Motility",
+  "Nutritional/Metabolic factor",
+  "Others",
+  "Post-translational modification",
+  "Regulation",
+  "Stress survival"
+)
+
+# 将所有模型存储为列表
+modelsd2_vfg <- list(
+  rAdherence,
+  rAntimicrobial_activity_Competitive_advantage,
+  rBiofilm,
+  rEffector_delivery_system,
+  rExoenzyme,
+  rExotoxin,
+  rImmune_modulation,
+  rInvasion,
+  rMotility,
+  rNutritional_Metabolic_factor,
+  rOthers,
+  rPost_translational_modification,
+  rRegulation,
+  rStress_survival
+)
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+
+results_cropland2_vfg <- lapply(1:length(modelsd2_vfg), function(i) {
+  tidy(modelsd2_vfg[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+
+
+# 将所有模型的结果合并为一个数据框
+cropland_resultsd2_vfg <- bind_rows(results_cropland2_vfg, .id = "Model")
+
+cropland_resultsd2_vfg <-cropland_resultsd2_vfg [,c(4,5,7,8)]
+colnames(cropland_resultsd2_vfg)[4]<-"index"
+colnames(cropland_resultsd2_vfg)[1]<-"Estimate"
+colnames(cropland_resultsd2_vfg)[2]<-"SE"
+colnames(cropland_resultsd2_vfg)[3]<-"p"
+cropland2_vfg<-cropland_resultsd2_vfg
+cropland2_vfg$significant <- ifelse(cropland2_vfg$p <= 0.001, "***",
+                                    ifelse(cropland2_vfg$p <= 0.01, "**",
+                                           ifelse(cropland2_vfg$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+cropland2_vfg$index <- reorder(cropland2_vfg$index, abs(cropland2_vfg$Estimate))
+
+
+#计算industry的效应值
+df_industry_vfg$TN <- as.numeric(df_industry_vfg$TN)
+df_industry_vfg$CN <- as.numeric(df_industry_vfg$CN)
+d2_vfg<-escalc(measure="ROM",data=df_industry_vfg,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_vfg <- na.omit(d2_vfg)
+head(d2_vfg)
+
+
+
+r1_vfg<-rma(yi,vi, data=d2_vfg, method="REML")
+summary(r1_vfg)
+
+
+library(metafor)
+
+
+rAdherence <- rma(yi, vi, data = subset(d2_vfg, TR == "Adherence"), method = "REML")
+
+rAntimicrobial_activity_Competitive_advantage <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Antimicrobial activity/Competitive advantage"),
+  method = "REML"
+)
+
+rBiofilm <- rma(yi, vi, data = subset(d2_vfg, TR == "Biofilm"), method = "REML")
+
+rEffector_delivery_system <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Effector delivery system"),
+  method = "REML"
+)
+
+rExoenzyme <- rma(yi, vi, data = subset(d2_vfg, TR == "Exoenzyme"), method = "REML")
+
+rExotoxin <- rma(yi, vi, data = subset(d2_vfg, TR == "Exotoxin"), method = "REML")
+
+rImmune_modulation <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Immune modulation"),
+  method = "REML"
+)
+
+rInvasion <- rma(yi, vi, data = subset(d2_vfg, TR == "Invasion"), method = "REML")
+
+rMotility <- rma(yi, vi, data = subset(d2_vfg, TR == "Motility"), method = "REML")
+
+rNutritional_Metabolic_factor <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Nutritional/Metabolic factor"),
+  method = "REML"
+)
+
+rOthers <- rma(yi, vi, data = subset(d2_vfg, TR == "Others"), method = "REML")
+
+rPost_translational_modification <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Post-translational modification"),
+  method = "REML"
+)
+
+rRegulation <- rma(yi, vi, data = subset(d2_vfg, TR == "Regulation"), method = "REML")
+
+rStress_survival <- rma(yi, vi, data = subset(d2_vfg, TR == "Stress survival"), method = "REML")
+
+summary(rAdherence)
+summary(rAntimicrobial_activity_Competitive_advantage)
+summary(rBiofilm)
+summary(rEffector_delivery_system)
+summary(rExoenzyme)
+summary(rExotoxin)
+summary(rImmune_modulation)
+summary(rInvasion)
+summary(rMotility)
+summary(rNutritional_Metabolic_factor)
+summary(rOthers)
+summary(rPost_translational_modification)
+summary(rRegulation)
+summary(rStress_survival)
+
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "Adherence",
+  "Antimicrobial activity/Competitive advantage",
+  "Biofilm",
+  "Effector delivery system",
+  "Exoenzyme",
+  "Exotoxin",
+  "Immune modulation",
+  "Invasion",
+  "Motility",
+  "Nutritional/Metabolic factor",
+  "Others",
+  "Post-translational modification",
+  "Regulation",
+  "Stress survival"
+)
+
+# 将所有模型存储为列表
+modelsd2_vfg <- list(
+  rAdherence,
+  rAntimicrobial_activity_Competitive_advantage,
+  rBiofilm,
+  rEffector_delivery_system,
+  rExoenzyme,
+  rExotoxin,
+  rImmune_modulation,
+  rInvasion,
+  rMotility,
+  rNutritional_Metabolic_factor,
+  rOthers,
+  rPost_translational_modification,
+  rRegulation,
+  rStress_survival
+)
+
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+
+results_industry2_vfg <- lapply(1:length(modelsd2_vfg), function(i) {
+  tidy(modelsd2_vfg[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+# 将所有模型的结果合并为一个数据框
+industry_resultsd2_vfg <- bind_rows(results_industry2_vfg, .id = "Model")
+
+industry_resultsd2_vfg <-industry_resultsd2_vfg [,c(4,5,7,8)]
+colnames(industry_resultsd2_vfg)[4]<-"index"
+colnames(industry_resultsd2_vfg)[1]<-"Estimate"
+colnames(industry_resultsd2_vfg)[2]<-"SE"
+colnames(industry_resultsd2_vfg)[3]<-"p"
+industry2_vfg<-industry_resultsd2_vfg
+industry2_vfg$significant <- ifelse(industry2_vfg$p <= 0.001, "***",
+                                    ifelse(industry2_vfg$p <= 0.01, "**",
+                                           ifelse(industry2_vfg$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+industry2_vfg$index <- reorder(industry2_vfg$index, abs(industry2_vfg$Estimate))
+
+
+#计算urban的效应值
+df_urban_vfg$TN <- as.numeric(df_urban_vfg$TN)
+df_urban_vfg$CN <- as.numeric(df_urban_vfg$CN)
+d2_vfg<-escalc(measure="ROM",data=df_urban_vfg,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_vfg <- na.omit(d2_vfg)
+head(d2_vfg)
+
+r1_vfg<-rma(yi,vi, data=d2_vfg, method="REML")
+summary(r1_vfg)
+
+rAdherence <- rma(yi, vi, data = subset(d2_vfg, TR == "Adherence"), method = "REML")
+
+rAntimicrobial_activity_Competitive_advantage <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Antimicrobial activity/Competitive advantage"),
+  method = "REML"
+)
+
+rBiofilm <- rma(yi, vi, data = subset(d2_vfg, TR == "Biofilm"), method = "REML")
+
+rEffector_delivery_system <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Effector delivery system"),
+  method = "REML"
+)
+
+rExoenzyme <- rma(yi, vi, data = subset(d2_vfg, TR == "Exoenzyme"), method = "REML")
+
+rExotoxin <- rma(yi, vi, data = subset(d2_vfg, TR == "Exotoxin"), method = "REML")
+
+rImmune_modulation <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Immune modulation"),
+  method = "REML"
+)
+
+rInvasion <- rma(yi, vi, data = subset(d2_vfg, TR == "Invasion"), method = "REML")
+
+rMotility <- rma(yi, vi, data = subset(d2_vfg, TR == "Motility"), method = "REML")
+
+rNutritional_Metabolic_factor <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Nutritional/Metabolic factor"),
+  method = "REML"
+)
+
+rOthers <- rma(yi, vi, data = subset(d2_vfg, TR == "Others"), method = "REML")
+
+rPost_translational_modification <- rma(
+  yi, vi, data = subset(d2_vfg, TR == "Post-translational modification"),
+  method = "REML"
+)
+
+rRegulation <- rma(yi, vi, data = subset(d2_vfg, TR == "Regulation"), method = "REML")
+
+rStress_survival <- rma(yi, vi, data = subset(d2_vfg, TR == "Stress survival"), method = "REML")
+
+summary(rAdherence)
+summary(rAntimicrobial_activity_Competitive_advantage)
+summary(rBiofilm)
+summary(rEffector_delivery_system)
+summary(rExoenzyme)
+summary(rExotoxin)
+summary(rImmune_modulation)
+summary(rInvasion)
+summary(rMotility)
+summary(rNutritional_Metabolic_factor)
+summary(rOthers)
+summary(rPost_translational_modification)
+summary(rRegulation)
+summary(rStress_survival)
+
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "Adherence",
+  "Antimicrobial activity/Competitive advantage",
+  "Biofilm",
+  "Effector delivery system",
+  "Exoenzyme",
+  "Exotoxin",
+  "Immune modulation",
+  "Invasion",
+  "Motility",
+  "Nutritional/Metabolic factor",
+  "Others",
+  "Post-translational modification",
+  "Regulation",
+  "Stress survival"
+)
+
+# 将所有模型存储为列表
+modelsd2_vfg <- list(
+  rAdherence,
+  rAntimicrobial_activity_Competitive_advantage,
+  rBiofilm,
+  rEffector_delivery_system,
+  rExoenzyme,
+  rExotoxin,
+  rImmune_modulation,
+  rInvasion,
+  rMotility,
+  rNutritional_Metabolic_factor,
+  rOthers,
+  rPost_translational_modification,
+  rRegulation,
+  rStress_survival
+)
+
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+library(broom)
+results_urban2_vfg <- lapply(1:length(modelsd2_vfg), function(i) {
+  tidy(modelsd2_vfg[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+# 将所有模型的结果合并为一个数据框
+urban_resultsd2_vfg <- bind_rows(results_urban2_vfg, .id = "Model")
+
+urban_resultsd2_vfg <-urban_resultsd2_vfg [,c(4,5,7,8)]
+colnames(urban_resultsd2_vfg)[4]<-"index"
+colnames(urban_resultsd2_vfg)[1]<-"Estimate"
+colnames(urban_resultsd2_vfg)[2]<-"SE"
+colnames(urban_resultsd2_vfg)[3]<-"p"
+urban2_vfg<-urban_resultsd2_vfg
+urban2_vfg$significant <- ifelse(urban2_vfg$p <= 0.001, "***",
+                                 ifelse(urban2_vfg$p <= 0.01, "**",
+                                        ifelse(urban2_vfg$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+urban2_vfg$index <- reorder(urban2_vfg$index, abs(urban2_vfg$Estimate))
+
+#MGE
+mge<-read.csv("/Users/yangy/Documents/E/city/metagenome/mge/results/mge1_type.csv",sep=",",header=T,row.names=1)
+mge<-mge[,-109]
+mge<-t(mge)
+mge<-as.data.frame(mge)
+group<-read.csv("/Users/yangy/Documents/E/city/metagenome/group.csv",sep=",",header=T,row.names=1)
+group <- group[order(rownames(group)),]
+
+mge <- mge[order(rownames(mge)),]
+identical(rownames(group), rownames(mge))
+
+
+mge$group<-group$group
+mge$Location<-group$Location
+
+treatment_data_mge <- mge[mge$group == "Cropland",]
+control_data_mge <- mge[mge$group == "Forest",]
+urban_data_mge<-mge[mge$group == "Urban",]
+industry_data_mge<-mge[mge$group == "Industry",]
+library(readr)
+
+
+treatment_data_mge <- treatment_data_mge %>%
+  mutate(across(1:11, ~ parse_number(as.character(.))))
+
+
+control_data_mge <- control_data_mge %>%
+  mutate(across(1:11, ~ parse_number(as.character(.))))
+
+industry_data_mge <- industry_data_mge %>%
+  mutate(across(1:11, ~ parse_number(as.character(.))))
+
+
+urban_data_mge <- urban_data_mge %>%
+  mutate(across(1:11, ~ parse_number(as.character(.))))
+
+summary_data_cropland_mge <- treatment_data_mge %>%
+  group_by(group) %>%
+  summarise(
+    across(1:11,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_forest_mge <- control_data_mge %>%
+  group_by(group) %>%
+  summarise(
+    across(1:11,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_urban_mge <- urban_data_mge %>%
+  group_by(group) %>%
+  summarise(
+    across(1:11,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+
+summary_data_industry_mge <- industry_data_mge %>%
+  group_by(group) %>%
+  summarise(
+    across(1:11,
+           list(mean = ~mean(.), sd = ~sd(.), n = ~length(.)),
+           .names = "{col}_{fn}")
+  )
+##生成df_cropland
+summary_data_cropland1_mge<-melt(summary_data_cropland_mge)
+
+
+data_mge<-summary_data_cropland1_mge
+result_mge <- data.frame(Factor = character(),
+                         Type = character(),
+                         Value = numeric(),
+                         stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_mge)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_mge$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_mge$variable[i])) {
+    result_mge <- rbind(result_mge, data.frame(Factor = factor_name, Type = "mean", Value = data_mge$value[i]))
+  } else if (grepl("_sd", data_mge$variable[i])) {
+    result_mge <- rbind(result_mge, data.frame(Factor = factor_name, Type = "sd", Value = data_mge$value[i]))
+  }
+}
+
+head(result_mge)
+
+result_sd_mge <- result_mge %>%
+  filter(Type == "sd")
+result_mean_mge<- result_mge %>%
+  filter(Type == "mean")
+colnames(result_sd_mge)[3]<-"SD"
+colnames(result_mean_mge)[3]<-"Mean"
+cropland_mge <- cbind(result_mean_mge, result_sd_mge)
+
+colnames(cropland_mge)[1]<-"TR"
+colnames(cropland_mge)[3]<-"TM"
+colnames(cropland_mge)[6]<-"TSD"
+cropland_mge<-cropland_mge[,-c(2,4,5)]
+cropland_mge$TN<-"27"
+
+
+
+##生成df_industry
+summary_data_industry1_mge<-melt(summary_data_industry_mge)
+data_mge<-summary_data_industry1_mge
+result_mge <- data.frame(Factor = character(),
+                         Type = character(),
+                         Value = numeric(),
+                         stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_mge)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_mge$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_mge$variable[i])) {
+    result_mge <- rbind(result_mge, data.frame(Factor = factor_name, Type = "mean", Value = data_mge$value[i]))
+  } else if (grepl("_sd", data_mge$variable[i])) {
+    result_mge <- rbind(result_mge, data.frame(Factor = factor_name, Type = "sd", Value = data_mge$value[i]))
+  }
+}
+
+head(result_mge)
+
+
+result_sd_mge <- result_mge %>%
+  filter(Type == "sd")
+result_mean_mge<- result_mge %>%
+  filter(Type == "mean")
+colnames(result_sd_mge)[3]<-"SD"
+colnames(result_mean_mge)[3]<-"Mean"
+
+industry_mge <- cbind(result_mean_mge, result_sd_mge)
+
+
+colnames(industry_mge)[1]<-"TR"
+colnames(industry_mge)[3]<-"TM"
+colnames(industry_mge)[6]<-"TSD"
+industry_mge<-industry_mge[,-c(2,4,5)]
+industry_mge$TN<-"27"
+
+##生成df_urban
+summary_data_urban1_mge<-melt(summary_data_urban_mge)
+data_mge<-summary_data_urban1_mge
+result_mge <- data.frame(Factor = character(),
+                         Type = character(),
+                         Value = numeric(),
+                         stringsAsFactors = FALSE)
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_mge)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_mge$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_mge$variable[i])) {
+    result_mge <- rbind(result_mge, data.frame(Factor = factor_name, Type = "mean", Value = data_mge$value[i]))
+  } else if (grepl("_sd", data_mge$variable[i])) {
+    result_mge <- rbind(result_mge, data.frame(Factor = factor_name, Type = "sd", Value = data_mge$value[i]))
+  }
+}
+
+head(result_mge)
+
+result_sd_mge <- result_mge %>%
+  filter(Type == "sd")
+result_mean_mge<- result_mge %>%
+  filter(Type == "mean")
+colnames(result_sd_mge)[3]<-"SD"
+colnames(result_mean_mge)[3]<-"Mean"
+
+urban_mge <- cbind(result_mean_mge, result_sd_mge)
+
+colnames(urban_mge)[1]<-"TR"
+colnames(urban_mge)[3]<-"TM"
+colnames(urban_mge)[6]<-"TSD"
+urban_mge<-urban_mge[,-c(2,4,5)]
+urban_mge$TN<-"27"
+
+
+
+##生成df_forest
+summary_data_forest1_mge<-melt(summary_data_forest_mge)
+
+
+data_mge<-summary_data_forest1_mge
+result_mge <- data.frame(Factor = character(),
+                         Type = character(),
+                         Value = numeric(),
+                         stringsAsFactors = FALSE)
+
+
+# 遍历每个变量，提取因子的名称
+for(i in 1:nrow(data_mge)) {
+  # 从变量列提取因子的名称
+  factor_name <- gsub("_mean|_sd", "", data_mge$variable[i])  # 去掉_mean和_sd后缀
+  
+  # 根据因子类型（mean 或 sd）分别赋值
+  if (grepl("_mean", data_mge$variable[i])) {
+    result_mge <- rbind(result_mge, data.frame(Factor = factor_name, Type = "mean", Value = data_mge$value[i]))
+  } else if (grepl("_sd", data_mge$variable[i])) {
+    result_mge <- rbind(result_mge, data.frame(Factor = factor_name, Type = "sd", Value = data_mge$value[i]))
+  }
+}
+
+
+head(result_mge)
+
+result_sd_mge <- result_mge %>%
+  filter(Type == "sd")
+result_mean_mge<- result_mge %>%
+  filter(Type == "mean")
+colnames(result_sd_mge)[3]<-"SD"
+colnames(result_mean_mge)[3]<-"Mean"
+
+forest_mge <- cbind(result_mean_mge, result_sd_mge)
+
+colnames(forest_mge)[1]<-"TR"
+colnames(forest_mge)[3]<-"CM"
+colnames(forest_mge)[6]<-"SCD"
+forest_mge<-forest_mge[,-c(2,4,5)]
+forest_mge$CN<-"27"
+
+
+df_cropland_mge<-cbind(cropland_mge,forest_mge)
+df_cropland_mge<-df_cropland_mge[,-5]
+df_urban_mge<-cbind(urban_mge,forest_mge)
+df_urban_mge<-df_urban_mge[,-5]
+df_industry_mge<-cbind(industry_mge,forest_mge)
+df_industry_mge<-df_industry_mge[,-5]
+
+
+##计算cropland的效应值
+df_cropland_mge$TN <- as.numeric(df_cropland_mge$TN)
+df_cropland_mge$CN <- as.numeric(df_cropland_mge$CN)
+d2_mge<-escalc(measure="ROM",data=df_cropland_mge,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_mge <- na.omit(d2_mge)
+head(d2_mge)
+
+r1_mge<-rma(yi,vi, data=d2_mge, method="REML")
+summary(r1_mge)
+
+library(metafor)
+r_transposase <- rma(yi, vi, data = subset(d2_mge, TR == "transposase"), method = "REML")
+summary(r_transposase)
+
+r_insertion_element_IS91 <- rma(yi, vi, data = subset(d2_mge, TR == "insertion_element_IS91"), method = "REML")
+summary(r_insertion_element_IS91)
+
+r_ISRj1 <- rma(yi, vi, data = subset(d2_mge, TR == "ISRj1"), method = "REML")
+summary(r_ISRj1)
+
+r_istB <- rma(yi, vi, data = subset(d2_mge, TR == "istB"), method = "REML")
+summary(r_istB)
+
+r_integrase <- rma(yi, vi, data = subset(d2_mge, TR == "integrase"), method = "REML")
+summary(r_integrase)
+
+r_istA <- rma(yi, vi, data = subset(d2_mge, TR == "istA"), method = "REML")
+summary(r_istA)
+
+r_istB1 <- rma(yi, vi, data = subset(d2_mge, TR == "istB1"), method = "REML")
+summary(r_istB1)
+
+r_tniB <- rma(yi, vi, data = subset(d2_mge, TR == "tniB"), method = "REML")
+summary(r_tniB)
+
+r_istA3 <- rma(yi, vi, data = subset(d2_mge, TR == "istA3"), method = "REML")
+summary(r_istA3)
+
+r_tniA <- rma(yi, vi, data = subset(d2_mge, TR == "tniA"), method = "REML")
+summary(r_tniA)
+
+r_Others <- rma(yi, vi, data = subset(d2_mge, TR == "Others"), method = "REML")
+summary(r_Others)
+
+
+
+
+
+
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "transposase","insertion_element_IS91","ISRj1","istB","integrase","istA","istB1","tniB", "istA3" ,"tniA","Others")
+
+
+# 将所有模型存储为列表
+modelsd2_mge <- list(
+  r_transposase,r_insertion_element_IS91,r_ISRj1,r_istB,r_integrase,r_istA,r_istB1,r_tniB,r_istA3,r_tniA,r_Others)
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+
+results_cropland2_mge <- lapply(1:length(modelsd2_mge), function(i) {
+  tidy(modelsd2_mge[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+# 将所有模型的结果合并为一个数据框
+cropland_resultsd2_mge <- bind_rows(results_cropland2_mge, .id = "Model")
+
+cropland_resultsd2_mge <-cropland_resultsd2_mge [,c(4,5,7,8)]
+colnames(cropland_resultsd2_mge)[4]<-"index"
+colnames(cropland_resultsd2_mge)[1]<-"Estimate"
+colnames(cropland_resultsd2_mge)[2]<-"SE"
+colnames(cropland_resultsd2_mge)[3]<-"p"
+cropland2_mge<-cropland_resultsd2_mge
+
+cropland2_mge$significant <- ifelse(cropland2_mge$p <= 0.001, "***",
+                                    ifelse(cropland2_mge$p <= 0.01, "**",
+                                           ifelse(cropland2_mge$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+cropland2_mge$index <- reorder(cropland2_mge$index, abs(cropland2_mge$Estimate))
+
+
+##计算industry的效应值
+df_industry_mge$TN <- as.numeric(df_industry_mge$TN)
+df_industry_mge$CN <- as.numeric(df_industry_mge$CN)
+d2_mge<-escalc(measure="ROM",data=df_industry_mge,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_mge <- na.omit(d2_mge)
+head(d2_mge)
+
+r1_mge<-rma(yi,vi, data=d2_mge, method="REML")
+summary(r1_mge)
+
+library(metafor)
+
+
+r_transposase <- rma(yi, vi, data = subset(d2_mge, TR == "transposase"), method = "REML")
+summary(r_transposase)
+
+r_insertion_element_IS91 <- rma(yi, vi, data = subset(d2_mge, TR == "insertion_element_IS91"), method = "REML")
+summary(r_insertion_element_IS91)
+
+r_ISRj1 <- rma(yi, vi, data = subset(d2_mge, TR == "ISRj1"), method = "REML")
+summary(r_ISRj1)
+
+r_istB <- rma(yi, vi, data = subset(d2_mge, TR == "istB"), method = "REML")
+summary(r_istB)
+
+r_integrase <- rma(yi, vi, data = subset(d2_mge, TR == "integrase"), method = "REML")
+summary(r_integrase)
+
+r_istA <- rma(yi, vi, data = subset(d2_mge, TR == "istA"), method = "REML")
+summary(r_istA)
+
+r_istB1 <- rma(yi, vi, data = subset(d2_mge, TR == "istB1"), method = "REML")
+summary(r_istB1)
+
+r_tniB <- rma(yi, vi, data = subset(d2_mge, TR == "tniB"), method = "REML")
+summary(r_tniB)
+
+r_istA3 <- rma(yi, vi, data = subset(d2_mge, TR == "istA3"), method = "REML")
+summary(r_istA3)
+
+r_tniA <- rma(yi, vi, data = subset(d2_mge, TR == "tniA"), method = "REML")
+summary(r_tniA)
+
+r_Others <- rma(yi, vi, data = subset(d2_mge, TR == "Others"), method = "REML")
+summary(r_Others)
+
+
+
+
+
+
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "transposase","insertion_element_IS91","ISRj1","istB","integrase","istA","istB1","tniB", "istA3" ,"tniA","Others")
+
+
+# 将所有模型存储为列表
+modelsd2_mge <- list(
+  r_transposase,r_insertion_element_IS91,r_ISRj1,r_istB,r_integrase,r_istA,r_istB1,r_tniB,r_istA3,r_tniA,r_Others)
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+
+results_industry2_mge <- lapply(1:length(modelsd2_mge), function(i) {
+  tidy(modelsd2_mge[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+# 将所有模型的结果合并为一个数据框
+industry_resultsd2_mge <- bind_rows(results_industry2_mge, .id = "Model")
+
+industry_resultsd2_mge <-industry_resultsd2_mge [,c(4,5,7,8)]
+colnames(industry_resultsd2_mge)[4]<-"index"
+colnames(industry_resultsd2_mge)[1]<-"Estimate"
+colnames(industry_resultsd2_mge)[2]<-"SE"
+colnames(industry_resultsd2_mge)[3]<-"p"
+industry2_mge<-industry_resultsd2_mge
+
+industry2_mge$significant <- ifelse(industry2_mge$p <= 0.001, "***",
+                                    ifelse(industry2_mge$p <= 0.01, "**",
+                                           ifelse(industry2_mge$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+industry2_mge$index <- reorder(industry2_mge$index, abs(industry2_mge$Estimate))
+
+#计算urban的效应值
+
+df_urban_mge$TN <- as.numeric(df_urban_mge$TN)
+df_urban_mge$CN <- as.numeric(df_urban_mge$CN)
+d2_mge<-escalc(measure="ROM",data=df_urban_mge,m1i=TM,sd1i=TSD,n1i=TN,m2i=CM,sd2i=SCD,n2i=CN)
+d2_mge <- na.omit(d2_mge)
+head(d2_mge)
+
+r1_mge<-rma(yi,vi, data=d2_mge, method="REML")
+summary(r1_mge)
+
+library(metafor)
+
+
+r_transposase <- rma(yi, vi, data = subset(d2_mge, TR == "transposase"), method = "REML")
+summary(r_transposase)
+
+r_insertion_element_IS91 <- rma(yi, vi, data = subset(d2_mge, TR == "insertion_element_IS91"), method = "REML")
+summary(r_insertion_element_IS91)
+
+r_ISRj1 <- rma(yi, vi, data = subset(d2_mge, TR == "ISRj1"), method = "REML")
+summary(r_ISRj1)
+
+r_istB <- rma(yi, vi, data = subset(d2_mge, TR == "istB"), method = "REML")
+summary(r_istB)
+
+r_integrase <- rma(yi, vi, data = subset(d2_mge, TR == "integrase"), method = "REML")
+summary(r_integrase)
+
+r_istA <- rma(yi, vi, data = subset(d2_mge, TR == "istA"), method = "REML")
+summary(r_istA)
+
+r_istB1 <- rma(yi, vi, data = subset(d2_mge, TR == "istB1"), method = "REML")
+summary(r_istB1)
+
+r_tniB <- rma(yi, vi, data = subset(d2_mge, TR == "tniB"), method = "REML")
+summary(r_tniB)
+
+r_istA3 <- rma(yi, vi, data = subset(d2_mge, TR == "istA3"), method = "REML")
+summary(r_istA3)
+
+r_tniA <- rma(yi, vi, data = subset(d2_mge, TR == "tniA"), method = "REML")
+summary(r_tniA)
+
+r_Others <- rma(yi, vi, data = subset(d2_mge, TR == "Others"), method = "REML")
+summary(r_Others)
+
+
+
+
+
+
+
+# 定义因子名称的向量（与模型一一对应）
+factor_names <- c(
+  "transposase","insertion_element_IS91","ISRj1","istB","integrase","istA","istB1","tniB", "istA3" ,"tniA","Others")
+
+
+# 将所有模型存储为列表
+modelsd2_mge <- list(
+  r_transposase,r_insertion_element_IS91,r_ISRj1,r_istB,r_integrase,r_istA,r_istB1,r_tniB,r_istA3,r_tniA,r_Others)
+
+
+# 提取每个模型的结果，并将因子名称添加到每个模型的结果中
+
+results_urban2_mge <- lapply(1:length(modelsd2_mge), function(i) {
+  tidy(modelsd2_mge[[i]]) %>%
+    mutate(Factor = factor_names[i])  # 添加因子名称列
+})
+# 将所有模型的结果合并为一个数据框
+urban_resultsd2_mge <- bind_rows(results_urban2_mge, .id = "Model")
+
+urban_resultsd2_mge <-urban_resultsd2_mge [,c(4,5,7,8)]
+colnames(urban_resultsd2_mge)[4]<-"index"
+colnames(urban_resultsd2_mge)[1]<-"Estimate"
+colnames(urban_resultsd2_mge)[2]<-"SE"
+colnames(urban_resultsd2_mge)[3]<-"p"
+urban2_mge<-urban_resultsd2_mge
+
+urban2_mge$significant <- ifelse(urban2_mge$p <= 0.001, "***",
+                                 ifelse(urban2_mge$p <= 0.01, "**",
+                                        ifelse(urban2_mge$p < 0.05, "*", "")))
+
+# 排序 index 列，使其按 Estimate 的绝对值从小到大排列
+urban2_mge$index <- reorder(urban2_mge$index, abs(urban2_mge$Estimate))
+
+###Cropland effect作图
+##取phylum在三个中至少一个有显著性的，
+sig_cropland <- cropland2_phylum %>% filter(p < 0.05) %>% pull(index)
+sig_urban <- urban2_phylum %>% filter(p < 0.05) %>% pull(index)
+sig_industry <- industry2_phylum %>% filter(p < 0.05) %>% pull(index)
+sig_any <- unique(c(sig_cropland, sig_urban, sig_industry))
+
+cropland2_phylum_sig <- cropland2_phylum %>% filter(index %in% sig_any)
+urban2_phylum_sig <- urban2_phylum %>% filter(index %in% sig_any)
+industry2_phylum_sig <- industry2_phylum %>% filter(index %in% sig_any)
+cropland2_phylum<-cropland2_phylum_sig
+urban2_phylum<-urban2_phylum_sig
+industry2_phylum<-industry2_phylum_sig
+
+##arg
+sig_cropland <- cropland2_arg %>% filter(p < 0.05) %>% pull(index)
+sig_urban <- urban2_arg %>% filter(p < 0.05) %>% pull(index)
+sig_industry <- industry2_arg %>% filter(p < 0.05) %>% pull(index)
+sig_any <- unique(c(sig_cropland, sig_urban, sig_industry))
+
+cropland2_arg_sig <- cropland2_arg %>% filter(index %in% sig_any)
+urban2_arg_sig <- urban2_arg %>% filter(index %in% sig_any)
+industry2_arg_sig <- industry2_arg %>% filter(index %in% sig_any)
+
+cropland2_arg<-cropland2_arg_sig
+urban2_arg<-urban2_arg_sig
+industry2_arg<-industry2_arg_sig
+
+
+
+##vfg
+sig_cropland <- cropland2_vfg %>% filter(p < 0.05) %>% pull(index)
+sig_urban <- urban2_vfg %>% filter(p < 0.05) %>% pull(index)
+sig_industry <- industry2_vfg %>% filter(p < 0.05) %>% pull(index)
+sig_any <- unique(c(sig_cropland, sig_urban, sig_industry))
+
+cropland2_vfg_sig <- cropland2_vfg %>% filter(index %in% sig_any)
+urban2_vfg_sig <- urban2_vfg %>% filter(index %in% sig_any)
+industry2_vfg_sig <- industry2_vfg %>% filter(index %in% sig_any)
+cropland2_vfg<-cropland2_vfg_sig
+urban2_vfg<-urban2_vfg_sig
+industry2_vfg<-industry2_vfg_sig
+
+#mge
+sig_cropland <- cropland2_mge %>% filter(p < 0.05) %>% pull(index)
+sig_urban <- urban2_mge %>% filter(p < 0.05) %>% pull(index)
+sig_industry <- industry2_mge %>% filter(p < 0.05) %>% pull(index)
+sig_any <- unique(c(sig_cropland, sig_urban, sig_industry))
+sig_any
+
+cropland2_mge <- cropland2_mge %>% filter(index %in% sig_any)
+urban2_mge <- urban2_mge %>% filter(index %in% sig_any)
+industry2_mge <- industry2_mge %>% filter(index %in% sig_any)
+
+
+
+
+##把bac,ARG，high risk ARG的croopland effect 放在一张图中
+cropland2_high$group<-"high"
+cropland2_arg$group<-"arg"
+cropland2_phylum$group<-"bacteria"
+cropland2_vfg$group<-"vfg"
+cropland2_mge$group<-"mge"
+
+cropland2_combine<-rbind(cropland2_phylum,cropland2_arg,cropland2_high,cropland2_vfg,cropland2_mge)
+cropland2_combine <- cropland2_combine %>%
+  filter(index != "Other_peptide_antibiotics")
+cropland2_combine
+
+##industry
+industry2_high$group<-"high"
+industry2_arg$group<-"arg"
+industry2_phylum$group<-"bacteria"
+industry2_vfg$group<-"vfg"
+industry2_mge$group<-"mge"
+
+industry2_combine<-rbind(industry2_phylum,industry2_arg,industry2_high,industry2_vfg,industry2_mge)
+industry2_combine <- industry2_combine %>%
+  filter(index != "Other_peptide_antibiotics")
+industry2_combine
+#urban
+urban2_high$group<-"high"
+urban2_arg$group<-"arg"
+urban2_phylum$group<-"bacteria"
+urban2_vfg$group<-"vfg"
+urban2_mge$group<-"mge"
+
+urban2_combine<-rbind(urban2_phylum,urban2_arg,urban2_high,urban2_vfg,urban2_mge)
+urban2_combine <- urban2_combine %>%
+  filter(index != "Other_peptide_antibiotics")
+
+
+library(dplyr)
+library(forcats)
+group_order <- c("mge","vfg","high", "arg", "bacteria")
+
+
+urban2_combine<- urban2_combine %>%
+  # 先将 group 设为 factor 并指定顺序
+  mutate(group = factor(group, levels = group_order)) %>%
+  # 先按 group 顺序排序，再按组内 Estimate 绝对值降序
+  arrange(group, abs(Estimate)) %>%
+  # 生成 y_factor
+  mutate(y_factor = factor(paste(group, index), 
+                           levels = paste(group, index)))
+
+
+cropland2_combine <- cropland2_combine %>%
+  mutate(y_factor = factor(paste(group, index)))
+
+industry2_combine <- industry2_combine %>%
+  mutate(y_factor = factor(paste(group, index)))
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+
+library(ggplot2)
+library(vegan)
+library(ggthemes)
+
+
+library(dplyr)
+library(ggplot2)
+
+
+colnames(cropland2_combine)[3]<-"pval"
+colnames(cropland2_combine)[5]<-"sig"
+cropland2_combine$significant <- ifelse(cropland2_combine$pval < 0.05, "Significant", "Non-significant")
+cropland2_combine$y_factor
+
+cropland2_combine <- cropland2_combine %>%
+  mutate(y_factor = factor(y_factor, 
+                           levels = levels(urban2_combine$y_factor)))
+
+custom_colors <- c(
+  # --- Bacteria phyla ---
+  "WPS-2" = "#E64B35",
+  "RCP2-54" = "orange",
+  "Verrucomicrobiota" = "green",
+  "Nitrospirota" = "#3C5488",
+  "Bacteroidota" = "cyan",
+  "Desulfobacterota" = "#0000FF",
+  "Gemmatimonadota" = "#F706DB",
+  "Chloroflexi" = "grey",
+  "Myxococcota" = "#7506F7",
+  "Planctomycetota" = "black",
+  "MBNT15" = "#FFD700",
+  
+  # --- ARG types ---
+  "Sulfonamide" = "#E64B35",
+  "Florfenicol" = "#4DBBD5",
+  "Defensin" = "#00A087",
+  "Chloramphenicol" = "#3C5488",
+  "Vancomycin" = "#F39B7F",
+  "Puromycin" = "#8491B4",
+  "Mupirocin" = "#91D1C2",
+  "Aminoglycoside" = "#DC0000",
+  "Bacitracin" = "#7E6148",
+  "Tetracenomycin_C" = "#B09C85",
+  "Fosfomycin" = "#808000",
+  "Novobiocin" = "#1E90FF",
+  "Polymyxin" = "#EE82EE",
+  "Tetracycline" = "#FF8C00",
+  "Rifamycin" = "#008B8B",
+  "Forfenicol" = "#7CAE00",
+  "Trimethoprim" = "pink",
+  "Multidrug" = "#274753",
+  "Beta_lactam" = "purple",
+  
+  # --- VFG types ---
+  "Post-translational modification" = "#1f78b4",
+  "Exotoxin" = "#33a02c",
+  "Biofilm" = "#fb9a99",
+  "Motility" = "#e31a1c",
+  "Effector delivery system" = "#fdbf6f",
+  "Exoenzyme" = "#9C27B0",
+  "Nutritional/Metabolic factor" = "#6a3d9a",
+  "Stress survival" = "#b15928",
+  "Regulation" = "#8dd3c7",
+  "Adherence" = "#F4A300",
+  
+  # --- MGE types ---
+  "transposase" = "#a6cee3",
+  "ISRj1"   = "#1f78b4",
+  "integrase"    = "#b2df8a",
+  "istA"     = "#33a02c",
+  "tniB"   = "#fb9a99",
+  "istA3"   = "#e31a1c",
+  "tniA"    = "#fdbf6f",
+  "insertion_element_IS91"     = "#cab2d6",
+  "istB1"     = "#6a3d9a",
+  "Others"="gray"
+)
+
+
+
+cropland2_combine$fill_color <- ifelse(
+  cropland2_combine$significant == "Significant",
+  custom_colors[cropland2_combine$index],
+  "white"
+)
+
+cropland2_combine$point_shape <- ifelse(cropland2_combine$significant == "Significant", 16, 21)
+
+
+
+
+# 3️⃣ 绘图，不分面
+library(dplyr)
+library(ggplot2)
+
+# 1️⃣ 先获取每个 group 的 y 轴范围
+y_ranges <- cropland2_combine %>%
+  group_by(group) %>%
+  summarise(
+    ymin = min(as.numeric(y_factor)) - 0.5,
+    ymax = max(as.numeric(y_factor)) + 0.5
+  )
+
+group_colors <- c("bacteria" = "#FA9A38",       
+                  "arg" = "#6B30C5", 
+                  "high" = "#097369",
+                  "vfg"="#A13B46",
+                  "mge"="#777777")
+
+
+
+# 先把 factor 转成字符
+cropland2_combine$index <- as.character(cropland2_combine$index)
+
+# 如果需要，再转回 factor
+cropland2_combine$index <- factor(cropland2_combine$index)
+
+library(ggtext)
+
+# 假设你的 y_factor 已经是 factor 类型，且顺序已确定
+n <- length(levels(cropland2_combine$y_factor))
+
+# 生成偶数行的矩形坐标
+rect_data <- data.frame(
+  ymin = seq(1.5, n - 0.5, by = 2),
+  ymax = seq(2.5, n + 0.5, by = 2)
+)
+
+
+library(ggtext)   # element_markdown
+
+# ------------------------
+# 1) 生成稳定的 y_factor -> index 映射（若同一个 y_factor 多次出现，保留第一次）
+# ------------------------
+unique_map <- cropland2_combine[!duplicated(cropland2_combine$y_factor), c("y_factor", "index")]
+
+# optional: 查看映射有没有问题（会打印到控制台）
+message("y_factor -> index 映射（前 20 行）：")
+print(head(unique_map, 20))
+
+# ------------------------
+# 2) 构建 lookup：y_factor -> color（从 custom_colors 找颜色）
+# ------------------------
+# 确保 index 是字符
+unique_map$index <- as.character(unique_map$index)
+
+# 检查 custom_colors 是否包含所有 index
+missing_idx <- setdiff(unique_map$index, names(custom_colors))
+if(length(missing_idx) > 0) {
+  warning("这些 index 在 custom_colors 中找不到颜色，将使用黑色回退: ", paste(missing_idx, collapse = ", "))
+}
+
+# 生成 lookup（若找不到对应 color 则用 'black' 作为回退）
+lookup_colors <- vapply(unique_map$index, function(idx) {
+  col <- custom_colors[idx]
+  if(is.na(col) || length(col)==0) col <- "black"
+  col
+}, FUN.VALUE = character(1))
+names(lookup_colors) <- unique_map$y_factor
+
+# ------------------------
+# 3) 绘图：在 scale_y_discrete 中用 lookup_colors 精确查表（不会错位）
+# ------------------------
+p <- ggplot(cropland2_combine, aes(x = Estimate, y = y_factor)) +
+  # 偶数行底纹（你已有 rect_data）
+  geom_rect(data = rect_data,
+            aes(xmin = -Inf, xmax = Inf, ymin = ymin, ymax = ymax),
+            inherit.aes = FALSE,
+            fill = "grey90", alpha = 0.3) +
+  
+  # 95% CI
+  geom_errorbarh(aes(
+    xmax = Estimate + 1.96 * SE,
+    xmin = Estimate - 1.96 * SE,
+    color = index,
+    linetype = "95% CI"
+  ),
+  size = 1.5, height = 0, alpha = 0.4) +
+  
+  # ±SE
+  geom_errorbarh(aes(
+    xmax = Estimate + SE,
+    xmin = Estimate - SE,
+    color = index,
+    linetype = "±SE"
+  ),
+  size = 2.5, height = 0, alpha = 0.7) +
+  
+  # 点
+  geom_point(aes(
+    fill = fill_color,
+    color = index,
+    shape = significant
+  ),
+  size = 6, stroke = 1) +
+  
+  geom_text(aes(label = sig), nudge_x = 0.05, size = 8, hjust = 0) +
+  
+  scale_color_manual(values = custom_colors, name = "") +
+  scale_fill_identity() +
+  scale_shape_manual(name = "Significance",
+                     values = c("Significant" = 16, "Non-significant" = 21)) +
+  scale_linetype_manual(name = "Error bars",
+                        values = c("95% CI" = "solid", "±SE" = "solid"),
+                        guide = guide_legend(override.aes = list(size = c(1.5, 2.5),
+                                                                 alpha = c(0.4,0.7),
+                                                                 color = "black"))) +
+  scale_x_continuous(
+    limits = c(-6, 6),
+    labels = function(x) sprintf("%.1f", x)
+  ) +
+  
+  # ==== 关键：使用 lookup_colors 精确匹配每个 y_factor 的颜色 ====
+scale_y_discrete(
+  labels = function(y) {
+    sapply(y, function(lbl) {
+      # lbl 是 factor level（y_factor）
+      clean_lbl <- gsub("^(bacteria |high |arg |vfg |mge )", "", lbl)
+      col <- lookup_colors[lbl]
+      if(is.na(col) || length(col)==0) col <- "black"
+      sprintf("<span style='color:%s; font-weight:bold;'>%s</span>", col, clean_lbl)
+    })
+  }
+) +
+  
+  geom_vline(xintercept = 0, color = "gray", linetype = "dashed", size = 0.8) +
+  labs(x = ' ', y = '', title = "Cropland effect") +
+  theme_few() +
+  theme(
+    plot.title = element_text(size = 18, colour = "black", face = "bold", hjust = 0.5),
+    panel.border = element_rect(colour = "black", fill = NA, size = 1),
+    legend.position = "none",
+    axis.line = element_line(colour = "black"),
+    axis.text.x = element_text(size = 16, color = "black", face = "bold"),
+    axis.text.y = element_markdown(size = 16, face = "bold"),  # 用 markdown 渲染颜色
+    axis.title.x = element_blank()
+  )
+
+p
+
+#ggsave("/Users/yangy/Documents/D/city/ARG/figure/composition/effect_size_composition_cropland_effect_vfg_mge版本.pdf",p,width=6,height=14)
+
+
+##industry
+
+
+colnames(industry2_combine)[3]<-"pval"
+colnames(industry2_combine)[5]<-"sig"
+industry2_combine$significant <- ifelse(industry2_combine$pval < 0.05, "Significant", "Non-significant")
+industry2_combine$y_factor
+
+industry2_combine <- industry2_combine %>%
+  mutate(y_factor = factor(y_factor, 
+                           levels = levels(urban2_combine$y_factor)))
+
+custom_colors <- c(
+  # --- Bacteria phyla ---
+  "WPS-2" = "#E64B35",
+  "RCP2-54" = "orange",
+  "Verrucomicrobiota" = "green",
+  "Nitrospirota" = "#3C5488",
+  "Bacteroidota" = "cyan",
+  "Desulfobacterota" = "#0000FF",
+  "Gemmatimonadota" = "#F706DB",
+  "Chloroflexi" = "grey",
+  "Myxococcota" = "#7506F7",
+  "Planctomycetota" = "black",
+  "MBNT15" = "#FFD700",
+  
+  # --- ARG types ---
+  "Sulfonamide" = "#E64B35",
+  "Florfenicol" = "#4DBBD5",
+  "Defensin" = "#00A087",
+  "Chloramphenicol" = "#3C5488",
+  "Vancomycin" = "#F39B7F",
+  "Puromycin" = "#8491B4",
+  "Mupirocin" = "#91D1C2",
+  "Aminoglycoside" = "#DC0000",
+  "Bacitracin" = "#7E6148",
+  "Tetracenomycin_C" = "#B09C85",
+  "Fosfomycin" = "#808000",
+  "Novobiocin" = "#1E90FF",
+  "Polymyxin" = "#EE82EE",
+  "Tetracycline" = "#FF8C00",
+  "Rifamycin" = "#008B8B",
+  "Forfenicol" = "#7CAE00",
+  "Trimethoprim" = "pink",
+  "Multidrug" = "#274753",
+  "Beta_lactam" = "purple",
+  
+  # --- VFG types ---
+  "Post-translational modification" = "#1f78b4",
+  "Exotoxin" = "#33a02c",
+  "Biofilm" = "#fb9a99",
+  "Motility" = "#e31a1c",
+  "Effector delivery system" = "#fdbf6f",
+  "Exoenzyme" = "#9C27B0",
+  "Nutritional/Metabolic factor" = "#6a3d9a",
+  "Stress survival" = "#b15928",
+  "Regulation" = "#8dd3c7",
+  "Adherence" = "#F4A300",
+  
+  # --- MGE types ---
+  "transposase" = "#a6cee3",
+  "ISRj1"   = "#1f78b4",
+  "integrase"    = "#b2df8a",
+  "istA"     = "#33a02c",
+  "tniB"   = "#fb9a99",
+  "istA3"   = "#e31a1c",
+  "tniA"    = "#fdbf6f",
+  "insertion_element_IS91"     = "#cab2d6",
+  "istB1"     = "#6a3d9a",
+  "Others"="gray"
+)
+
+
+
+
+industry2_combine$fill_color <- ifelse(
+  industry2_combine$significant == "Significant",
+  custom_colors[industry2_combine$index],
+  "white"
+)
+
+industry2_combine$point_shape <- ifelse(industry2_combine$significant == "Significant", 16, 21)
+
+
+
+
+# 3️⃣ 绘图，不分面
+library(dplyr)
+library(ggplot2)
+
+# 1️⃣ 先获取每个 group 的 y 轴范围
+y_ranges <- industry2_combine %>%
+  group_by(group) %>%
+  summarise(
+    ymin = min(as.numeric(y_factor)) - 0.5,
+    ymax = max(as.numeric(y_factor)) + 0.5
+  )
+
+group_colors <- c("bacteria" = "#FA9A38",       
+                  "arg" = "#6B30C5", 
+                  "high" = "#097369",
+                  "vfg"="#A13B46",
+                  "mge"="#777777")
+
+
+
+# 先把 factor 转成字符
+industry2_combine$index <- as.character(industry2_combine$index)
+
+# 如果需要，再转回 factor
+industry2_combine$index <- factor(industry2_combine$index)
+
+library(ggtext)
+
+# 假设你的 y_factor 已经是 factor 类型，且顺序已确定
+n <- length(levels(industry2_combine$y_factor))
+
+# 生成偶数行的矩形坐标
+rect_data <- data.frame(
+  ymin = seq(1.5, n - 0.5, by = 2),
+  ymax = seq(2.5, n + 0.5, by = 2)
+)
+
+
+
+
+
+library(ggtext)   # element_markdown
+
+# ------------------------
+# 1) 生成稳定的 y_factor -> index 映射（若同一个 y_factor 多次出现，保留第一次）
+# ------------------------
+unique_map <- cropland2_combine[!duplicated(cropland2_combine$y_factor), c("y_factor", "index")]
+
+# optional: 查看映射有没有问题（会打印到控制台）
+message("y_factor -> index 映射（前 20 行）：")
+print(head(unique_map, 20))
+
+# ------------------------
+# 2) 构建 lookup：y_factor -> color（从 custom_colors 找颜色）
+# ------------------------
+# 确保 index 是字符
+unique_map$index <- as.character(unique_map$index)
+
+# 检查 custom_colors 是否包含所有 index
+missing_idx <- setdiff(unique_map$index, names(custom_colors))
+if(length(missing_idx) > 0) {
+  warning("这些 index 在 custom_colors 中找不到颜色，将使用黑色回退: ", paste(missing_idx, collapse = ", "))
+}
+
+# 生成 lookup（若找不到对应 color 则用 'black' 作为回退）
+lookup_colors <- vapply(unique_map$index, function(idx) {
+  col <- custom_colors[idx]
+  if(is.na(col) || length(col)==0) col <- "black"
+  col
+}, FUN.VALUE = character(1))
+names(lookup_colors) <- unique_map$y_factor
+
+# ------------------------
+# 3) 绘图：在 scale_y_discrete 中用 lookup_colors 精确查表（不会错位）
+# ------------------------
+p <- ggplot(industry2_combine, aes(x = Estimate, y = y_factor)) +
+  # 偶数行底纹（你已有 rect_data）
+  geom_rect(data = rect_data,
+            aes(xmin = -Inf, xmax = Inf, ymin = ymin, ymax = ymax),
+            inherit.aes = FALSE,
+            fill = "grey90", alpha = 0.3) +
+  
+  # 95% CI
+  geom_errorbarh(aes(
+    xmax = Estimate + 1.96 * SE,
+    xmin = Estimate - 1.96 * SE,
+    color = index,
+    linetype = "95% CI"
+  ),
+  size = 1.5, height = 0, alpha = 0.4) +
+  
+  # ±SE
+  geom_errorbarh(aes(
+    xmax = Estimate + SE,
+    xmin = Estimate - SE,
+    color = index,
+    linetype = "±SE"
+  ),
+  size = 2.5, height = 0, alpha = 0.7) +
+  
+  # 点
+  geom_point(aes(
+    fill = fill_color,
+    color = index,
+    shape = significant
+  ),
+  size = 6, stroke = 1) +
+  
+  geom_text(aes(label = sig), nudge_x = 0.05, size = 8, hjust = 0) +
+  
+  scale_color_manual(values = custom_colors, name = "") +
+  scale_fill_identity() +
+  scale_shape_manual(name = "Significance",
+                     values = c("Significant" = 16, "Non-significant" = 21)) +
+  scale_linetype_manual(name = "Error bars",
+                        values = c("95% CI" = "solid", "±SE" = "solid"),
+                        guide = guide_legend(override.aes = list(size = c(1.5, 2.5),
+                                                                 alpha = c(0.4,0.7),
+                                                                 color = "black"))) +
+  scale_x_continuous(
+    limits = c(-6, 6),
+    labels = function(x) sprintf("%.1f", x)
+  ) +
+  
+  # ==== 关键：使用 lookup_colors 精确匹配每个 y_factor 的颜色 ====
+scale_y_discrete(
+  labels = function(y) {
+    sapply(y, function(lbl) {
+      # lbl 是 factor level（y_factor）
+      clean_lbl <- gsub("^(bacteria |high |arg |vfg |mge )", "", lbl)
+      col <- lookup_colors[lbl]
+      if(is.na(col) || length(col)==0) col <- "black"
+      sprintf("<span style='color:%s; font-weight:bold;'>%s</span>", col, clean_lbl)
+    })
+  }
+) +
+  
+  geom_vline(xintercept = 0, color = "gray", linetype = "dashed", size = 0.8) +
+  labs(x = ' ', y = '', title = "Industry effect") +
+  theme_few() +
+  theme(
+    plot.title = element_text(size = 18, colour = "black", face = "bold", hjust = 0.5),
+    panel.border = element_rect(colour = "black", fill = NA, size = 1),
+    legend.position = "none",
+    axis.line = element_line(colour = "black"),
+    axis.text.x = element_text(size = 16, color = "black", face = "bold"),
+    axis.text.y = element_markdown(size = 16, face = "bold"),  # 用 markdown 渲染颜色
+    axis.title.x = element_blank()
+  )
+
+p
+
+
+#ggsave("/Users/yangy/Documents/D/city/ARG/figure/composition/effect_size_composition_industry_effect_vfg_mge版本.pdf",p,width=6,height=14)
+
+
+##urban
+colnames(urban2_combine)[3]<-"pval"
+colnames(urban2_combine)[5]<-"sig"
+urban2_combine$significant <- ifelse(urban2_combine$pval < 0.05, "Significant", "Non-significant")
+urban2_combine$y_factor
+
+urban2_combine <- urban2_combine %>%
+  mutate(y_factor = factor(y_factor, 
+                           levels = levels(urban2_combine$y_factor)))
+
+
+custom_colors <- c(
+  # --- Bacteria phyla ---
+  "WPS-2" = "#E64B35",
+  "RCP2-54" = "orange",
+  "Verrucomicrobiota" = "green",
+  "Nitrospirota" = "#3C5488",
+  "Bacteroidota" = "cyan",
+  "Desulfobacterota" = "#0000FF",
+  "Gemmatimonadota" = "#F706DB",
+  "Chloroflexi" = "grey",
+  "Myxococcota" = "#7506F7",
+  "Planctomycetota" = "black",
+  "MBNT15" = "#FFD700",
+  
+  # --- ARG types ---
+  "Sulfonamide" = "#E64B35",
+  "Florfenicol" = "#4DBBD5",
+  "Defensin" = "#00A087",
+  "Chloramphenicol" = "#3C5488",
+  "Vancomycin" = "#F39B7F",
+  "Puromycin" = "#8491B4",
+  "Mupirocin" = "#91D1C2",
+  "Aminoglycoside" = "#DC0000",
+  "Bacitracin" = "#7E6148",
+  "Tetracenomycin_C" = "#B09C85",
+  "Fosfomycin" = "#808000",
+  "Novobiocin" = "#1E90FF",
+  "Polymyxin" = "#EE82EE",
+  "Tetracycline" = "#FF8C00",
+  "Rifamycin" = "#008B8B",
+  "Forfenicol" = "#7CAE00",
+  "Trimethoprim" = "pink",
+  "Multidrug" = "#274753",
+  "Beta_lactam" = "purple",
+  
+  # --- VFG types ---
+  "Post-translational modification" = "#1f78b4",
+  "Exotoxin" = "#33a02c",
+  "Biofilm" = "#fb9a99",
+  "Motility" = "#e31a1c",
+  "Effector delivery system" = "#fdbf6f",
+  "Exoenzyme" = "#9C27B0",
+  "Nutritional/Metabolic factor" = "#6a3d9a",
+  "Stress survival" = "#b15928",
+  "Regulation" = "#8dd3c7",
+  "Adherence" = "#F4A300",
+  
+  # --- MGE types ---
+  "transposase" = "#a6cee3",
+  "ISRj1"   = "#1f78b4",
+  "integrase"    = "#b2df8a",
+  "istA"     = "#33a02c",
+  "tniB"   = "#fb9a99",
+  "istA3"   = "#e31a1c",
+  "tniA"    = "#fdbf6f",
+  "insertion_element_IS91"     = "#cab2d6",
+  "istB1"     = "#6a3d9a",
+  "Others"="gray"
+)
+
+
+
+urban2_combine$fill_color <- ifelse(
+  urban2_combine$significant == "Significant",
+  custom_colors[urban2_combine$index],
+  "white"
+)
+
+urban2_combine$point_shape <- ifelse(urban2_combine$significant == "Significant", 16, 21)
+
+
+
+
+# 3️⃣ 绘图，不分面
+library(dplyr)
+library(ggplot2)
+
+# 1️⃣ 先获取每个 group 的 y 轴范围
+y_ranges <- urban2_combine %>%
+  group_by(group) %>%
+  summarise(
+    ymin = min(as.numeric(y_factor)) - 0.5,
+    ymax = max(as.numeric(y_factor)) + 0.5
+  )
+
+group_colors <- c("bacteria" = "#FA9A38",       
+                  "arg" = "#6B30C5", 
+                  "high" = "#097369",
+                  "vfg"="#A13B46",
+                  "mge"="#777777")
+
+
+
+# 先把 factor 转成字符
+urban2_combine$index <- as.character(urban2_combine$index)
+
+# 如果需要，再转回 factor
+urban2_combine$index <- factor(urban2_combine$index)
+
+library(ggtext)
+
+# 假设你的 y_factor 已经是 factor 类型，且顺序已确定
+n <- length(levels(urban2_combine$y_factor))
+
+# 生成偶数行的矩形坐标
+rect_data <- data.frame(
+  ymin = seq(1.5, n - 0.5, by = 2),
+  ymax = seq(2.5, n + 0.5, by = 2)
+)
+
+
+library(ggtext)   # element_markdown
+
+# ------------------------
+# 1) 生成稳定的 y_factor -> index 映射（若同一个 y_factor 多次出现，保留第一次）
+# ------------------------
+unique_map <- cropland2_combine[!duplicated(cropland2_combine$y_factor), c("y_factor", "index")]
+
+# optional: 查看映射有没有问题（会打印到控制台）
+message("y_factor -> index 映射（前 20 行）：")
+print(head(unique_map, 20))
+
+# ------------------------
+# 2) 构建 lookup：y_factor -> color（从 custom_colors 找颜色）
+# ------------------------
+# 确保 index 是字符
+unique_map$index <- as.character(unique_map$index)
+
+# 检查 custom_colors 是否包含所有 index
+missing_idx <- setdiff(unique_map$index, names(custom_colors))
+if(length(missing_idx) > 0) {
+  warning("这些 index 在 custom_colors 中找不到颜色，将使用黑色回退: ", paste(missing_idx, collapse = ", "))
+}
+
+# 生成 lookup（若找不到对应 color 则用 'black' 作为回退）
+lookup_colors <- vapply(unique_map$index, function(idx) {
+  col <- custom_colors[idx]
+  if(is.na(col) || length(col)==0) col <- "black"
+  col
+}, FUN.VALUE = character(1))
+names(lookup_colors) <- unique_map$y_factor
+
+# ------------------------
+# 3) 绘图：在 scale_y_discrete 中用 lookup_colors 精确查表（不会错位）
+# ------------------------
+p <- ggplot(urban2_combine, aes(x = Estimate, y = y_factor)) +
+  # 偶数行底纹（你已有 rect_data）
+  geom_rect(data = rect_data,
+            aes(xmin = -Inf, xmax = Inf, ymin = ymin, ymax = ymax),
+            inherit.aes = FALSE,
+            fill = "grey90", alpha = 0.3) +
+  
+  # 95% CI
+  geom_errorbarh(aes(
+    xmax = Estimate + 1.96 * SE,
+    xmin = Estimate - 1.96 * SE,
+    color = index,
+    linetype = "95% CI"
+  ),
+  size = 1.5, height = 0, alpha = 0.4) +
+  
+  # ±SE
+  geom_errorbarh(aes(
+    xmax = Estimate + SE,
+    xmin = Estimate - SE,
+    color = index,
+    linetype = "±SE"
+  ),
+  size = 2.5, height = 0, alpha = 0.7) +
+  
+  # 点
+  geom_point(aes(
+    fill = fill_color,
+    color = index,
+    shape = significant
+  ),
+  size = 6, stroke = 1) +
+  
+  geom_text(aes(label = sig), nudge_x = 0.05, size = 8, hjust = 0) +
+  
+  scale_color_manual(values = custom_colors, name = "") +
+  scale_fill_identity() +
+  scale_shape_manual(name = "Significance",
+                     values = c("Significant" = 16, "Non-significant" = 21)) +
+  scale_linetype_manual(name = "Error bars",
+                        values = c("95% CI" = "solid", "±SE" = "solid"),
+                        guide = guide_legend(override.aes = list(size = c(1.5, 2.5),
+                                                                 alpha = c(0.4,0.7),
+                                                                 color = "black"))) +
+  scale_x_continuous(
+    limits = c(-6, 6),
+    labels = function(x) sprintf("%.1f", x)
+  ) +
+  
+  # ==== 关键：使用 lookup_colors 精确匹配每个 y_factor 的颜色 ====
+scale_y_discrete(
+  labels = function(y) {
+    sapply(y, function(lbl) {
+      # lbl 是 factor level（y_factor）
+      clean_lbl <- gsub("^(bacteria |high |arg |vfg |mge )", "", lbl)
+      col <- lookup_colors[lbl]
+      if(is.na(col) || length(col)==0) col <- "black"
+      sprintf("<span style='color:%s; font-weight:bold;'>%s</span>", col, clean_lbl)
+    })
+  }
+) +
+  
+  geom_vline(xintercept = 0, color = "gray", linetype = "dashed", size = 0.8) +
+  labs(x = ' ', y = '', title = "Urban effect") +
+  theme_few() +
+  theme(
+    plot.title = element_text(size = 18, colour = "black", face = "bold", hjust = 0.5),
+    panel.border = element_rect(colour = "black", fill = NA, size = 1),
+    legend.position = "none",
+    axis.line = element_line(colour = "black"),
+    axis.text.x = element_text(size = 16, color = "black", face = "bold"),
+    axis.text.y = element_markdown(size = 16, face = "bold"),  # 用 markdown 渲染颜色
+    axis.title.x = element_blank()
+  )
+
+p
+
+
+#ggsave("/Users/yangy/Documents/D/city/ARG/figure/composition/effect_size_composition_urban_effect_vfg_mge版本.pdf",p,width=6,height=14)
+```
+
